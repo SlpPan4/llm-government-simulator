@@ -78,6 +78,7 @@ export const CONFIG = {
     dynamicEventCooldownWeeks: 4,
     chronicleLimit: 15,
     customArcTimeoutWeeks: 24,
+    maxArcStage: 5, // 7.8.1: потолок стадии арки при продолжениях
   },
   statScale: { min: 0, max: 100 },
   neighborRelationsScale: { min: -100, max: 100 },

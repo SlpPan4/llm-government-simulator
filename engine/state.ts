@@ -196,6 +196,11 @@ export function addMoodDelta(state: GameState, key: MoodKey, delta: number): voi
 
 // ─── Арки (низкоуровневые операции) ───
 
+// id арок нормализуются движком: lowercase, всё кроме [a-zа-яё0-9] → «_» (7.8.1).
+export function normalizeArcId(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-zа-яё0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+}
+
 export function makeArc(
   state: GameState,
   init: Pick<ArcState, 'id' | 'title' | 'kind'> & Partial<ArcState>,
@@ -257,20 +262,33 @@ export function applyDynamicEvent(state: GameState, evt: ValidatedDynamicEvent):
     addCharacter(state, evt.newCharacter.name, evt.newCharacter.role);
   }
 
-  if (evt.newArc && !state.arcs.some((a) => a.id === evt.newArc) &&
-      state.arcs.length < CONFIG.run.maxActiveArcs) {
-    makeArc(state, { id: evt.newArc, title: evt.title, kind: 'custom', description: evt.description });
-    pushChronicle(state, `📖 Открыта сюжетная арка «${evt.title}»`);
+  // Арка открывается через newArc, только если среди АКТИВНЫХ нет арки с тем же
+  // названием (trim + lowercase). Иначе событие — продолжение существующей (7.8.1).
+  let parentArcId = evt.parentArcId;
+  if (evt.newArc) {
+    const titleKey = evt.title.trim().toLowerCase();
+    const existing = state.arcs.find((a) => a.title.trim().toLowerCase() === titleKey);
+    if (existing) {
+      parentArcId = existing.id;
+    } else if (state.arcs.length < CONFIG.run.maxActiveArcs) {
+      const id = normalizeArcId(evt.newArc) || normalizeArcId(evt.title);
+      if (id && !state.arcs.some((a) => a.id === id)) {
+        makeArc(state, { id, title: evt.title, kind: 'custom', description: evt.description });
+        pushChronicle(state, `📖 Открыта сюжетная арка «${evt.title}»`);
+      }
+    }
   }
 
-  if (evt.parentArcId) {
-    const parent = state.arcs.find((a) => a.id === evt.parentArcId);
+  if (parentArcId) {
+    const parent = state.arcs.find((a) => a.id === parentArcId);
     if (parent) {
       if (evt.resolvesArc) {
         finishArc(state, parent, evt.title);
       } else {
         parent.lastUpdateWeek = state.week;
         parent.turns += 1;
+        // любое продолжение повышает стадию на 1, потолок 5 (7.8.1)
+        parent.stage = Math.min(parent.stage + 1, CONFIG.run.maxArcStage);
         pushChronicle(state, `Развитие арки «${parent.title}»: ${evt.title}`);
       }
     }
