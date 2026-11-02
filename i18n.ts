@@ -48,6 +48,8 @@ export interface CommandStrings {
   status: string[];
   surrender: string[];
   setting: string[];
+  save: string[];
+  saveQuit: string[];
   skipPattern: RegExp;
   yesWords: string[];
 }
@@ -99,6 +101,14 @@ export interface UiStrings {
   intro: (country: string, weeks: number) => string;
   commandsHint: string;
   inputClosed: string;
+  savePrompt: (country: string) => string;
+  saveDone: (path: string) => string;
+  saveFailed: (msg: string) => string;
+  saveNameInvalid: string;
+  autosavePrompt: (country: string, week: number, total: number) => string;
+  saveVersionMismatch: (found: string) => string;
+  loadFailed: (msg: string) => string;
+  continueLine: (country: string, week: number) => string;
   status: StatusStrings;
   commands: CommandStrings;
   turn: TurnStrings;
@@ -119,8 +129,17 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     modePrompt: 'Режим (1/2): ',
     invalidMode: 'Введите 1 или 2.',
     intro: (country, weeks) => `\n${country} ждёт решений. Срок — ${weeks} недель.`,
-    commandsHint: 'Команды: свободный текст действия, «пропустить N» (2–13), «статус», «сеттинг», «сдаться».',
+    commandsHint: 'Команды: свободный текст действия, «пропустить N» (2–13), «статус», «сеттинг», «сохранить», «сохранить и выйти», «сдаться».',
     inputClosed: '\nВвод завершён.',
+    savePrompt: (country) => `\nИмя сохранения (Enter — «${country}-save»): `,
+    saveDone: (path) => `💾 Сохранено: ${path}`,
+    saveFailed: (msg) => `⚠ Не удалось сохранить: ${msg}`,
+    saveNameInvalid: 'Имя сохранения не может быть пустым.',
+    autosavePrompt: (country, week, total) =>
+      `\nНайдено автосохранение: «${country}», неделя ${week}/${total}. Продолжить? (да/нет): `,
+    saveVersionMismatch: (found) => `несовместимая версия сейва (${found}), нужна версия 1`,
+    loadFailed: (msg) => `⚠ Не удалось загрузить сохранение: ${msg}. Начинается новый ран.`,
+    continueLine: (country, week) => `\nПравление «${country}» продолжается. Неделя ${week}.`,
     status: {
       weekLine: (week, weeksTotal, month, monthsTotal, modeLabel, treasury) =>
         `Неделя ${week}/${weeksTotal} (≈${month}/${monthsTotal} мес.) | Режим: ${modeLabel} | Казна: ${treasury} млрд`,
@@ -165,6 +184,8 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       status: ['статус'],
       surrender: ['сдаться'],
       setting: ['сеттинг'],
+      save: ['сохранить'],
+      saveQuit: ['сохранить и выйти'],
       skipPattern: /^пропустить\s+(\d+)$/i,
       yesWords: ['да'],
     },
@@ -218,8 +239,17 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     modePrompt: 'Режим (1/2): ',
     invalidMode: 'Введіть 1 або 2.',
     intro: (country, weeks) => `\n${country} чекає на рішення. Термін — ${weeks} тижнів.`,
-    commandsHint: 'Команди: вільний текст дії, «пропустити N» (2–13), «статус», «сеттінг», «здатися».',
+    commandsHint: 'Команди: вільний текст дії, «пропустити N» (2–13), «статус», «сеттінг», «зберегти», «зберегти і вийти», «здатися».',
     inputClosed: '\nВвід завершено.',
+    savePrompt: (country) => `\nІм'я збереження (Enter — «${country}-save»): `,
+    saveDone: (path) => `💾 Збережено: ${path}`,
+    saveFailed: (msg) => `⚠ Не вдалося зберегти: ${msg}`,
+    saveNameInvalid: 'Ім\'я збереження не може бути порожнім.',
+    autosavePrompt: (country, week, total) =>
+      `\nЗнайдено автозбереження: «${country}», тиждень ${week}/${total}. Продовжити? (так/ні): `,
+    saveVersionMismatch: (found) => `несумісна версія сейву (${found}), потрібна версія 1`,
+    loadFailed: (msg) => `⚠ Не вдалося завантажити збереження: ${msg}. Починається новий ран.`,
+    continueLine: (country, week) => `\nПравління «${country}» продовжується. Тиждень ${week}.`,
     status: {
       weekLine: (week, weeksTotal, month, monthsTotal, modeLabel, treasury) =>
         `Тиждень ${week}/${weeksTotal} (≈${month}/${monthsTotal} міс.) | Режим: ${modeLabel} | Казна: ${treasury} млрд`,
@@ -264,6 +294,8 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       status: ['статус'],
       surrender: ['здатися'],
       setting: ['сеттінг'],
+      save: ['зберегти'],
+      saveQuit: ['зберегти і вийти'],
       skipPattern: /^пропустити\s+(\d+)$/i,
       yesWords: ['так'],
     },
@@ -317,8 +349,17 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     modePrompt: 'Mode (1/2): ',
     invalidMode: 'Enter 1 or 2.',
     intro: (country, weeks) => `\n${country} awaits your decisions. Term — ${weeks} weeks.`,
-    commandsHint: 'Commands: free-text action, "skip N" (2–13), "status", "setting", "surrender".',
+    commandsHint: 'Commands: free-text action, "skip N" (2–13), "status", "setting", "save", "save and quit", "surrender".',
     inputClosed: '\nInput closed.',
+    savePrompt: (country) => `\nSave name (Enter — "${country}-save"): `,
+    saveDone: (path) => `💾 Saved: ${path}`,
+    saveFailed: (msg) => `⚠ Could not save: ${msg}`,
+    saveNameInvalid: 'Save name cannot be empty.',
+    autosavePrompt: (country, week, total) =>
+      `\nAutosave found: "${country}", week ${week}/${total}. Continue? (yes/no): `,
+    saveVersionMismatch: (found) => `incompatible save version (${found}), version 1 required`,
+    loadFailed: (msg) => `⚠ Could not load the save: ${msg}. Starting a new run.`,
+    continueLine: (country, week) => `\nThe rule of "${country}" continues. Week ${week}.`,
     status: {
       weekLine: (week, weeksTotal, month, monthsTotal, modeLabel, treasury) =>
         `Week ${week}/${weeksTotal} (≈${month}/${monthsTotal} mo.) | Mode: ${modeLabel} | Treasury: ${treasury} bln`,
@@ -363,6 +404,8 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       status: ['status'],
       surrender: ['surrender'],
       setting: ['setting'],
+      save: ['save'],
+      saveQuit: ['save and quit', 'save and exit'],
       skipPattern: /^skip\s+(\d+)$/i,
       yesWords: ['yes', 'y'],
     },
