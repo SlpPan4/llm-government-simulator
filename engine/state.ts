@@ -55,6 +55,9 @@ export interface RunCounters {
 export interface GameState {
   mode: GameMode;
   countryName: string;
+  // World setting of the run: free text from the player, injected into every
+  // LLM prompt. The engine never interprets it (texts only, no rule changes).
+  setting: string;
   week: number; // 1..termWeeks
   stats: Record<StatKey, number>;
   mood: Record<MoodKey, number>;
@@ -80,7 +83,7 @@ export interface GameState {
   gameOver: GameOverInfo | null;
 }
 
-export function createInitialState(mode: GameMode, countryName: string): GameState {
+export function createInitialState(mode: GameMode, countryName: string, setting = ''): GameState {
   const stats = {} as Record<StatKey, number>;
   for (const k of STAT_KEYS) stats[k] = CONFIG.stats[k].start;
   const mood = {} as Record<MoodKey, number>;
@@ -88,6 +91,7 @@ export function createInitialState(mode: GameMode, countryName: string): GameSta
   return {
     mode,
     countryName,
+    setting,
     week: 1,
     stats,
     mood,

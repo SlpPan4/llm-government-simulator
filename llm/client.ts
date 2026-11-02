@@ -1,20 +1,23 @@
-// Интерфейс LLM + DeepSeekLLM (openai SDK, меняется только baseURL) + MockLLM
-// + фабрика createLLM(). Движок этого слоя не импортирует (закон 2).
+// LLM interface + DeepSeekLLM (openai SDK, only baseURL differs) + MockLLM
+// + createLLM() factory. The engine never imports this layer (law 2).
 
 import OpenAI from 'openai';
 import type { GameState } from '../engine/state.js';
-import { buildEpiloguePrompt, buildNarratePrompt, buildParseActionPrompt, type NarrateContext } from './prompts.js';
+import { MOCK_STRINGS, PROMPT_STRINGS, type UiLanguage } from '../i18n.js';
+import {
+  buildEpiloguePrompt, buildNarratePrompt, buildParseActionPrompt, type NarrateContext,
+} from './prompts.js';
 
 export interface LLM {
-  // Сырой JSON парсера действий — дальше работает валидатор движка.
+  // Raw action-parser JSON — the engine validator takes it from here.
   parseAction(state: GameState, actionText: string): Promise<unknown>;
-  // Единый ответ narrate: news + baseEventFlavor + dynamicEvent.
+  // Single narrate answer: news + baseEventFlavor + dynamicEvent.
   narrate(state: GameState, ctx: NarrateContext): Promise<unknown>;
-  // Готовый текст эпилога.
+  // Ready epilogue text.
   epilogue(state: GameState, endingLabel: string, scoreTotal: number): Promise<string>;
 }
 
-// Нормализация действия для кэша: trim + lowercase (закон 6).
+// Action normalization for the cache: trim + lowercase (law 6).
 export function normalizeAction(text: string): string {
   return text.trim().toLowerCase();
 }
@@ -27,7 +30,7 @@ function stripCodeFences(text: string): string {
     .trim();
 }
 
-// Одинаковые действия не уходят в API повторно.
+// Identical actions are not sent to the API twice.
 class CachedLLM implements LLM {
   private cache = new Map<string, Promise<unknown>>();
 
@@ -39,7 +42,7 @@ class CachedLLM implements LLM {
     if (hit) return hit;
     const pending = this.inner.parseAction(state, actionText);
     this.cache.set(key, pending);
-    pending.catch(() => this.cache.delete(key)); // не кэшируем провал
+    pending.catch(() => this.cache.delete(key)); // do not cache failures
     return pending;
   }
 
@@ -55,7 +58,12 @@ class CachedLLM implements LLM {
 export class DeepSeekLLM implements LLM {
   private client: OpenAI;
 
-  constructor(apiKey: string, baseURL: string, private model: string) {
+  constructor(
+    apiKey: string,
+    baseURL: string,
+    private model: string,
+    private lang: UiLanguage,
+  ) {
     this.client = new OpenAI({ apiKey, baseURL });
   }
 
@@ -72,37 +80,42 @@ export class DeepSeekLLM implements LLM {
       const text = res.choices[0]?.message?.content ?? '';
       return JSON.parse(stripCodeFences(text));
     } catch {
-      return null; // сеть/парсинг упали — нейтральный результат решает валидатор
+      return null; // network/parse failure — the validator decides a neutral result
     }
   }
 
   parseAction(state: GameState, actionText: string): Promise<unknown> {
-    const p = buildParseActionPrompt(state, actionText);
+    const p = buildParseActionPrompt(state, actionText, this.lang);
     return this.chat(p.system, p.user);
   }
 
   narrate(state: GameState, ctx: NarrateContext): Promise<unknown> {
-    const p = buildNarratePrompt(state, ctx);
+    const p = buildNarratePrompt(state, ctx, this.lang);
     return this.chat(p.system, p.user);
   }
 
   async epilogue(state: GameState, endingLabel: string, scoreTotal: number): Promise<string> {
-    const p = buildEpiloguePrompt(state, endingLabel, scoreTotal);
+    const p = buildEpiloguePrompt(state, endingLabel, scoreTotal, this.lang);
     const raw = await this.chat(p.system, p.user);
     if (raw && typeof raw === 'object' && typeof (raw as { epilogue?: unknown }).epilogue === 'string') {
       return (raw as { epilogue: string }).epilogue;
     }
-    return 'История ещё напишет об этом правлении — пока рано подводить итоги.';
+    return PROMPT_STRINGS[this.lang].fallbackEpilogue;
   }
 }
 
-// Заглушка: эвристика по ключевым словам, игра полностью работает без API.
+// Stub: keyword heuristics; the game fully works without an API.
+// Stubs answer in the run language; keywords match all three languages.
 export class MockLLM implements LLM {
-  constructor(private rng: () => number = Math.random) {}
+  constructor(
+    private lang: UiLanguage,
+    private rng: () => number = Math.random,
+  ) {}
 
   async parseAction(state: GameState, actionText: string): Promise<unknown> {
-    const t = actionText.trim().toLowerCase();
-    const has = (...ws: string[]) => ws.some((w) => t.includes(w));
+    const t = MOCK_STRINGS[this.lang];
+    const text = actionText.trim().toLowerCase();
+    const has = (...ws: string[]) => ws.some((w) => text.includes(w));
     const effects: Record<string, number> = {};
     const mood: Record<string, number> = {};
     const tags: string[] = [];
@@ -111,48 +124,60 @@ export class MockLLM implements LLM {
     let actionType = 'other';
     let warTarget: string | null = null;
 
-    if (has('война', 'вторг', 'атаковать', 'бомбить', 'ударить по', 'объявить войну')) {
+    if (has('война', 'вторг', 'атаковать', 'бомбить', 'ударить по', 'объявить войну',
+      'війн', 'вторгн', 'атакуват', 'бомб',
+      'war', 'invade', 'attack', 'bomb', 'declare war')) {
       actionType = 'war';
       const n = state.neighbors.find((x) =>
-        t.includes(x.name.toLowerCase())
-        || x.name.toLowerCase().split(/\s+/).some((w) => w.length > 3 && t.includes(w)));
+        text.includes(x.name.toLowerCase())
+        || x.name.toLowerCase().split(/\s+/).some((w) => w.length > 3 && text.includes(w)));
       warTarget = n ? n.name : (state.neighbors[0]?.name ?? null);
       tags.push('militarism');
     }
-    if (has('образован', 'школ', 'университет', 'наук')) {
+    if (has('образован', 'школ', 'университет', 'наук',
+      'освіт', 'універс', 'educat', 'school', 'universit', 'scienc')) {
       effects.education = 6; effects.technology = 3; effects.economy = 2;
       mood.workers = 2; tags.push('technocracy');
     }
-    if (has('медицин', 'здравоохран', 'льгот', 'пособи', 'пенси')) {
+    if (has('медицин', 'здравоохран', 'льгот', 'пособи', 'пенси',
+      'медицин', 'здоров', 'пенсі', 'льгот',
+      'medic', 'health', 'pension', 'welfare', 'benefit')) {
       effects.economy = 2; mood.workers = 5; mood.elites = -2;
       treasuryDelta -= 6; tags.push('welfare');
     }
-    if (has('налог', 'сбор')) {
+    if (has('налог', 'сбор', 'податк', 'tax')) {
       effects.economy = 3; mood.workers = -6; mood.elites = 3; tags.push('austerity');
     }
-    if (has('свобод', 'цензур')) {
+    if (has('свобод', 'цензур', 'freedom', 'censor')) {
       effects.freedom = 6; mood.youth = 5; tags.push('liberalism');
     }
-    if (has('запрет', 'запреща')) {
+    if (has('запрет', 'запреща', 'заборон', 'ban', 'forbid', 'prohibit')) {
       effects.freedom = -5; mood.youth = -4; tags.push('authoritarianism');
     }
-    if (has('арми', 'военн', 'оружи', 'флот', 'призыв')) {
+    if (has('арми', 'военн', 'оружи', 'флот', 'призыв',
+      'армі', 'військ', 'збро', 'army', 'military', 'weapon', 'navy', 'fleet', 'conscript')) {
       effects.warMood = 6; effects.stability = 2; mood.military = 6; mood.youth = -3;
       treasuryDelta -= 5; tags.push('militarism');
     }
-    if (has('коррупц')) {
+    if (has('коррупц', 'корупц', 'corrupt')) {
       effects.corruption = -5; mood.workers = 3;
     }
-    if (has('инфраструктур', 'дорог', 'мост', 'строительств', 'жиль')) {
+    if (has('инфраструктур', 'дорог', 'мост', 'строительств', 'жиль',
+      'інфраструктур', 'доріг', 'міст', 'будівництв', 'житл',
+      'infrastruct', 'road', 'bridge', 'construct', 'hous')) {
       effects.economy = 4; effects.poverty = -2; treasuryDelta -= 8;
     }
-    if (has('эколог', 'природ', 'лес', 'заповедник')) {
+    if (has('эколог', 'природ', 'лес', 'заповедник',
+      'еколог', 'ліс', 'заповідник', 'ecolog', 'nature', 'forest')) {
       effects.technology = 2; mood.youth = 4; tags.push('ecology');
     }
-    if (has('церков', 'традиц', 'религи')) {
+    if (has('церков', 'традиц', 'религи', 'церков', 'реліг',
+      'church', 'tradition', 'religio')) {
       mood.elites = 4; mood.youth = -2; tags.push('traditionalism');
     }
-    if (has('единорог', 'радуга', 'клоун', 'конфетти', 'плюшев', 'обезьян', 'пицц')) {
+    if (has('единорог', 'радуга', 'клоун', 'конфетти', 'плюшев', 'обезьян', 'пицц',
+      'єдиноріг', 'веселк', 'клоун', 'плюшев', 'мавп', 'піц',
+      'unicorn', 'rainbow', 'clown', 'confetti', 'plush', 'monkey', 'pizza')) {
       absurdity = 70 + Math.floor(this.rng() * 25);
       mood.workers = (mood.workers ?? 0) + 3;
       mood.youth = (mood.youth ?? 0) + 6;
@@ -160,7 +185,7 @@ export class MockLLM implements LLM {
       tags.push('populism');
     }
     if (Object.keys(effects).length === 0 && actionType !== 'war') {
-      // нейтральное действие без явных ключей
+      // neutral action without explicit keywords
       effects.economy = Math.floor(this.rng() * 5) - 1;
       effects.stability = Math.floor(this.rng() * 3);
       mood.workers = Math.floor(this.rng() * 5) - 2;
@@ -168,8 +193,8 @@ export class MockLLM implements LLM {
     }
 
     const summary = actionType === 'war'
-      ? `Президент объявляет войну: ${warTarget}.`
-      : `Правительство запускает инициативу «${actionText.trim()}»; последствия ощущаются в обществе.`;
+      ? t.warSummary(warTarget ?? '')
+      : t.defaultSummary(actionText.trim());
 
     return {
       summary,
@@ -184,26 +209,27 @@ export class MockLLM implements LLM {
   }
 
   async narrate(state: GameState, ctx: NarrateContext): Promise<unknown> {
-    const notes = ctx.turnNotes.length ? ctx.turnNotes.join('; ') : 'особых событий не было';
+    const t = MOCK_STRINGS[this.lang];
+    const notes = ctx.turnNotes.length ? ctx.turnNotes.join('; ') : t.noNotes;
     const news = [
-      `«${state.countryName}», неделя ${state.week}.`,
-      ctx.actionSummary ? `Главная тема: ${ctx.actionSummary}.` : 'Неделя прошла без громких решений.',
-      `Итоги периода: ${notes}.`,
-      'Голоса города: «Надеемся на лучшее», «Политика — грязное дело», «Главное — стабильность».',
+      t.newsWeek(state.countryName, state.week),
+      ctx.actionSummary ? t.newsMainAction(ctx.actionSummary) : t.newsNoAction,
+      t.newsNotes(notes),
+      t.newsVoices,
     ].join(' ');
     const baseEventFlavor = ctx.baseEvent
       ? {
-          title: `${ctx.baseEvent.title} — подробности`,
-          description: `Корреспонденты разбираются в ситуации: «${ctx.baseEvent.title.toLowerCase()}». Власти пока воздерживаются от комментариев.`,
+          title: `${ctx.baseEvent.title} ${t.flavorSuffix}`,
+          description: t.flavorDescription(ctx.baseEvent.title.toLowerCase()),
         }
       : null;
 
     let dynamicEvent = null;
     if (!ctx.cooldownActive && this.rng() < 0.25) {
-      // иногда подбрасываем простое событие, чтобы прокачать пайплайн
+      // occasionally throw a simple event to exercise the pipeline
       dynamicEvent = {
-        title: 'Слухи в торговых рядах',
-        description: 'Купцы обсуждают перемены и ждут ясности от правительства.',
+        title: t.dynTitle,
+        description: t.dynDescription,
         effects: { economy: 2 },
         mood: {},
         treasuryDelta: 0,
@@ -219,21 +245,24 @@ export class MockLLM implements LLM {
   }
 
   async epilogue(state: GameState, endingLabel: string, scoreTotal: number): Promise<string> {
-    return [
-      `Прошло десять лет. ${state.countryName} помнит это правление — иначе, чем ожидали.`,
-      `Концовка: ${endingLabel}. Историки спорят, была ли цена оправдана, а население (${state.population.toFixed(1)} млн против ${state.populationStart.toFixed(1)} млн на старте) просто живёт дальше.`,
-      `Счёт историков: ${scoreTotal}.`,
-    ].join(' ');
+    const t = MOCK_STRINGS[this.lang];
+    return t.epilogue(
+      state.countryName,
+      endingLabel,
+      state.population.toFixed(1),
+      state.populationStart.toFixed(1),
+      scoreTotal,
+    );
   }
 }
 
-// Фабрика: USE_MOCK_LLM=true → заглушка без API; иначе DeepSeek + кэш действий.
-export function createLLM(): LLM {
+// Factory: USE_MOCK_LLM=true -> offline stub; otherwise DeepSeek + action cache.
+export function createLLM(lang: UiLanguage = 'ru'): LLM {
   if (process.env.USE_MOCK_LLM === 'true') {
-    return new MockLLM();
+    return new MockLLM(lang);
   }
   const apiKey = process.env.DEEPSEEK_API_KEY ?? '';
   const baseURL = process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
   const model = process.env.DEEPSEEK_MODEL ?? 'deepseek-chat';
-  return new CachedLLM(new DeepSeekLLM(apiKey, baseURL, model));
+  return new CachedLLM(new DeepSeekLLM(apiKey, baseURL, model, lang));
 }
