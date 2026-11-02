@@ -434,8 +434,10 @@ export interface PromptStrings {
   none: string;
   countersLine: (actions: number, baseEvents: number, dynamicEvents: number, arcsFinished: number, chronicleCollapsed: number) => string;
   activeArcsLabel: string;
+  arcEntry: (id: string, title: string, stage: number) => string;
+  arcContinueRule: string;
+  treasuryRule: string;
   finishedArcsLabel: string;
-  arcStage: (stage: number) => string;
   charactersLabel: string;
   attitudeLabel: string;
   ideologyLabel: string;
@@ -486,8 +488,10 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     countersLine: (actions, baseEvents, dynamicEvents, arcsFinished, chronicleCollapsed) =>
       `Сводные счётчики рана: действий ${actions}, базовых ивентов ${baseEvents}, динамических событий ${dynamicEvents}, арок завершено ${arcsFinished}, схлопнуто старых записей хроники ${chronicleCollapsed}.`,
     activeArcsLabel: 'Активные арки',
+    arcEntry: (id, title, stage) => `id="${id}" «${title}» (стадия ${stage})`,
+    arcContinueRule: 'ПРАВИЛО АРОК: newArc — только для сюжета, которого НЕТ среди активных арок. Если событие развивает одну из активных арок — верни parentArcId с её id, НЕ newArc. Запрещено открывать арку с названием, дословно повторяющим активную.',
+    treasuryRule: 'ПРАВИЛО КАЗНЫ: эффекты казны должны быть обоснованы самим действием или событием. Реформы, армия, стройки, субсидии — это РАСХОД (отрицательный эффект). Положительный эффект казны допустим, только если в действии явно есть источник дохода (налоги, пошлины, продажа, репарации) — и пропорционален ему.',
     finishedArcsLabel: 'Завершённые арки',
-    arcStage: (stage) => `стадия ${stage}`,
     charactersLabel: 'Персонажи',
     attitudeLabel: 'отношение',
     ideologyLabel: 'Идеологический профиль',
@@ -539,8 +543,10 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     countersLine: (actions, baseEvents, dynamicEvents, arcsFinished, chronicleCollapsed) =>
       `Зведені лічильники рану: дій ${actions}, базових івентів ${baseEvents}, динамічних подій ${dynamicEvents}, арок завершено ${arcsFinished}, згорнуто старих записів хроніки ${chronicleCollapsed}.`,
     activeArcsLabel: 'Активні арки',
+    arcEntry: (id, title, stage) => `id="${id}" «${title}» (стадія ${stage})`,
+    arcContinueRule: 'ПРАВИЛО АРОК: newArc — лише для сюжету, якого НЕМАЄ серед активних арок. Якщо подія розвиває одну з активних арок — поверни parentArcId з її id, НЕ newArc. Заборонено відкривати арку з назвою, що дослівно повторює активну.',
+    treasuryRule: 'ПРАВИЛО КАЗНИ: ефекти казни мають бути обґрунтовані самою дією або подією. Реформи, армія, будівництво, субсидії — це ВИТРАТА (негативний ефект). Додатний ефект казни допустимий, лише якщо в дії явно є джерело доходу (податки, мита, продаж, репарації) — і пропорційний йому.',
     finishedArcsLabel: 'Завершені арки',
-    arcStage: (stage) => `стадія ${stage}`,
     charactersLabel: 'Персонажі',
     attitudeLabel: 'відношення',
     ideologyLabel: 'Ідеологічний профіль',
@@ -592,8 +598,10 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     countersLine: (actions, baseEvents, dynamicEvents, arcsFinished, chronicleCollapsed) =>
       `Run counters: actions ${actions}, base events ${baseEvents}, dynamic events ${dynamicEvents}, arcs finished ${arcsFinished}, collapsed old chronicle entries ${chronicleCollapsed}.`,
     activeArcsLabel: 'Active arcs',
+    arcEntry: (id, title, stage) => `id="${id}" "${title}" (stage ${stage})`,
+    arcContinueRule: 'ARC RULE: newArc is only for a plot that is NOT among the active arcs. If the event develops one of the active arcs, return parentArcId with its id, NOT newArc. Opening an arc whose title literally repeats an active one is forbidden.',
+    treasuryRule: 'TREASURY RULE: treasury effects must be justified by the action or event itself. Reforms, the military, construction, subsidies are COSTS (negative effect). A positive treasury effect is allowed only if the action explicitly contains a revenue source (taxes, tariffs, sales, reparations) — and proportional to it.',
     finishedArcsLabel: 'Finished arcs',
-    arcStage: (stage) => `stage ${stage}`,
     charactersLabel: 'Characters',
     attitudeLabel: 'attitude',
     ideologyLabel: 'Ideology profile',

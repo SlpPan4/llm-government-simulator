@@ -66,6 +66,7 @@ export function buildParseActionPrompt(
     p.parseRole,
     p.tone[state.mode],
     p.parseRules,
+    p.treasuryRule,
     p.answerSchemaLabel + ':',
     PARSE_SCHEMA,
     IDEOLOGY_TAGS_LINE,
@@ -100,6 +101,8 @@ export function buildNarratePrompt(
     p.strictJsonLabel,
     NARRATE_SCHEMA,
     p.narrateDynRules,
+    p.arcContinueRule,
+    p.treasuryRule,
     p.writeIn,
     p.keysEnglish,
     p.settingRule,
@@ -117,7 +120,7 @@ export function buildNarratePrompt(
       state.counters.arcsFinished,
       state.chronicleCollapsed,
     ),
-    `${p.activeArcsLabel}: ` + (state.arcs.map((a) => `${a.title} (${p.arcStage(a.stage)})`).join('; ') || p.none),
+    `${p.activeArcsLabel}:\n` + (state.arcs.map((a) => p.arcEntry(a.id, a.title, a.stage)).join('\n') || p.none),
     `${p.finishedArcsLabel}: ` + (state.finishedArcs.map((a) => `${a.title} — ${a.outcome}`).join('; ') || p.none),
     `${p.charactersLabel}: ` + (state.characters
       .map((c) => `${c.name}, ${c.role}, ${p.attitudeLabel} ${c.attitude}`)
