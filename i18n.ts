@@ -3,8 +3,12 @@
 // The engine and the validator never import this module (project law:
 // the engine and the validator know no language at all).
 
-import type { GameMode, MoodBand, MoodKey, StatKey } from './engine/config.js';
-import type { EndingId } from './engine/score.js';
+import type {
+  GameMode, HardArcId, MoodBand, MoodKey, StatKey,
+} from './engine/config.js';
+import type { ArcOutcome, ArcOutcomeKey, ChronicleEntry } from './engine/chronicle.js';
+import type { HappeningMsg } from './engine/triggers.js';
+import type { EndingDescription, EndingId, EndingReason } from './engine/score.js';
 
 export const UI_LANGUAGES = ['ru', 'uk', 'en'] as const;
 export type UiLanguage = (typeof UI_LANGUAGES)[number];
@@ -56,8 +60,10 @@ export interface CommandStrings {
 
 export interface TurnStrings {
   actionFailed: string;
+  actionDone: string; // summary от LLM пуст
   warDeclared: (title: string) => string;
   warNoTarget: string;
+  warArcTitle: (neighbor: string) => string; // заголовок арки наступательной войны
   crisisStarted: (title: string, week: number) => string;
   calmWeeks: (from: number, to: number) => string;
   baseEventTitle: (title: string) => string;
@@ -68,6 +74,28 @@ export interface TurnStrings {
   noHappenings: (from: number, to: number) => string;
   amnestyApplied: (floor: number, treasuryCost: number, stabilityCost: number) => string;
   consequencesLine: (treasury: string | null, rest: string) => string;
+  // заметки хода для narrate-промпта (на языке рана)
+  noteWarDeclared: (title: string) => string;
+  noteCrisisStarted: (title: string) => string;
+  // новости-строки развязок и стадий жёстких арок (7.7) — ключи HappeningMsg
+  coupUltimatum: string;
+  coupSuppressed: string;
+  protestsCalmed: string;
+  protestsClashes: string;
+  civilWarBegins: string;
+  civilWarConsumed: string;
+  protestsOrderRestored: string;
+  oligarchsBribe: string;
+  oligarchsOpposition: string;
+  oligarchsOffer: string;
+  invasionUltimatum: (neighbor: string) => string;
+  invasionRepelled: (neighbor: string) => string;
+  invasionSurrender: (neighbor: string) => string;
+  warStalemate: (neighbor: string) => string;
+  warVictory: (neighbor: string) => string;
+  warDefeat: (neighbor: string) => string;
+  warContinues: (neighbor: string) => string;
+  arcFizzled: (title: string) => string;
 }
 
 export interface FinaleStrings {
@@ -81,6 +109,13 @@ export interface FinaleStrings {
   total: (total: number) => string;
   epilogueFallback: string;
   endingLabels: Record<EndingId, string>;
+  // описания концовок от движка (7.9) — рендер EndingReason
+  descReelectedClean: string;
+  descReelectedWillful: string;
+  descHandover: string;
+  descCoup: string;
+  descCivilWar: string;
+  descInvasion: (neighbor: string) => string;
   surrenderDescription: string;
   stayPrompt: string;
   stayFailedUnrest: string;
@@ -108,7 +143,7 @@ export interface UiStrings {
   saveFailed: (msg: string) => string;
   saveNameInvalid: string;
   autosavePrompt: (country: string, week: number, total: number) => string;
-  saveVersionMismatch: (found: string) => string;
+  saveVersionMismatch: (found: string, required: number) => string;
   loadFailed: (msg: string) => string;
   continueLine: (country: string, week: number) => string;
   status: StatusStrings;
@@ -139,7 +174,7 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     saveNameInvalid: 'Имя сохранения не может быть пустым.',
     autosavePrompt: (country, week, total) =>
       `\nНайдено автосохранение: «${country}», неделя ${week}/${total}. Продолжить? (да/нет): `,
-    saveVersionMismatch: (found) => `несовместимая версия сейва (${found}), нужна версия 1`,
+    saveVersionMismatch: (found, required) => `несовместимая версия сейва (${found}), нужна версия ${required}`,
     loadFailed: (msg) => `⚠ Не удалось загрузить сохранение: ${msg}. Начинается новый ран.`,
     continueLine: (country, week) => `\nПравление «${country}» продолжается. Неделя ${week}.`,
     status: {
@@ -193,8 +228,10 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     },
     turn: {
       actionFailed: 'Советники не смогли превратить слова президента в конкретный план. Ничего не изменилось.',
+      actionDone: 'Действие выполнено.',
       warDeclared: (title) => `⚠ Объявлена война: ${title}`,
       warNoTarget: '⚠ Война не началась: такого соседа нет.',
+      warArcTitle: (neighbor) => `Война: ${neighbor}`,
       crisisStarted: (title, week) => `⚠ Кризис: «${title}»! Время прервано на неделе ${week}.`,
       calmWeeks: (from, to) => `Недели ${from}–${to} прошли спокойно.`,
       baseEventTitle: (title) => `⚡ Событие: ${title}`,
@@ -207,6 +244,27 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
         `🕊 Великое примирение: замороженные слои разморожены, настроение поднято до ${floor}. Цена: казна −${cost} млрд, стабильность −${stab}.`,
       consequencesLine: (treasury, rest) =>
         `Последствия: ${[treasury ? `казна ${treasury} млрд` : null, rest].filter(Boolean).join(' | ')}`,
+      noteWarDeclared: (title) => `объявлена война: ${title}`,
+      noteCrisisStarted: (title) => `началась кризисная арка: ${title}`,
+      coupUltimatum: '⚠ Телеультиматум генералов: армия требует уступок.',
+      coupSuppressed: '⚠ Переворот подавлен: армия осталась верна.',
+      protestsCalmed: '⚠ Протесты утихли: президент пошёл на переговоры и выполнил условия оппозиции.',
+      protestsClashes: '⚠ Столкновения протестующих с полицией: стабильность падает.',
+      civilWarBegins: '💥 Гражданская война началась.',
+      civilWarConsumed: '💥 Гражданская война поглотила страну.',
+      protestsOrderRestored: '⚠ Восстание подавлено: порядок восстановлен.',
+      oligarchsBribe: '⚠ Олигархи предложили сделку — взятка принята. Казна потяжелела, рабочие недовольны.',
+      oligarchsOpposition: '⚠ Олигархи финансируют оппозицию.',
+      oligarchsOffer: '⚠ Олигархи предлагают «взаимовыгодное сотрудничество».',
+      invasionUltimatum: (neighbor) => `⚠ ${neighbor} вручила ультиматум.`,
+      invasionRepelled: (neighbor) => `⚠ ${neighbor} отбита! Страна празднует победу.`,
+      invasionSurrender: (neighbor) => `💥 Страна капитулировала перед ${neighbor}.`,
+      warStalemate: (neighbor) => `⚠ Война с ${neighbor}: фронт держится, казна тает.`,
+      warVictory: (neighbor) => `⚠ Победа над ${neighbor}! Репарации пополнили казну.`,
+      warDefeat: (neighbor) => `⚠ Позорный мир с ${neighbor}. Страна в трауре.`,
+      warContinues: (neighbor) => `⚠ Война с ${neighbor} продолжается: фронт замер.`,
+      arcFizzled: (title) =>
+        `📖 Сюжет: «${title}» выдохлось — СМИ переключились на новые темы, общество постепенно забыло конфликт.`,
     },
     finale: {
       header: '\n═══ КОНЕЦ ПРАВЛЕНИЯ ═══',
@@ -225,6 +283,12 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
         overthrown: 'Свержение / отставка',
         collapsed: 'Крах страны',
       },
+      descReelectedClean: 'Честная победа на выборах: страна довольна правлением.',
+      descReelectedWillful: 'Волевая победа вопреки настроениям: порядок перевесил недовольство.',
+      descHandover: 'Срок окончен: власть мирно передана преемнику.',
+      descCoup: 'Военный переворот: армия свергла президента.',
+      descCivilWar: 'Гражданская война поглотила страну.',
+      descInvasion: (neighbor) => `Страна капитулировала перед ${neighbor}.`,
       surrenderDescription: 'Президент досрочно подал в отставку.',
       stayPrompt: '\nКонцентрация власти достаточна, чтобы попытаться ОСТАТЬСЯ у власти. Попробовать? (да/нет): ',
       stayFailedUnrest: 'Попытка удержать власть провалилась: страна взбунтовалась против президента.',
@@ -253,7 +317,7 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     saveNameInvalid: 'Ім\'я збереження не може бути порожнім.',
     autosavePrompt: (country, week, total) =>
       `\nЗнайдено автозбереження: «${country}», тиждень ${week}/${total}. Продовжити? (так/ні): `,
-    saveVersionMismatch: (found) => `несумісна версія сейву (${found}), потрібна версія 1`,
+    saveVersionMismatch: (found, required) => `несумісна версія сейву (${found}), потрібна версія ${required}`,
     loadFailed: (msg) => `⚠ Не вдалося завантажити збереження: ${msg}. Починається новий ран.`,
     continueLine: (country, week) => `\nПравління «${country}» продовжується. Тиждень ${week}.`,
     status: {
@@ -307,8 +371,10 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     },
     turn: {
       actionFailed: 'Радники не змогли перетворити слова президента на конкретний план. Нічого не змінилося.',
+      actionDone: 'Дію виконано.',
       warDeclared: (title) => `⚠ Оголошено війну: ${title}`,
       warNoTarget: '⚠ Війна не розпочалася: такого сусіда немає.',
+      warArcTitle: (neighbor) => `Війна: ${neighbor}`,
       crisisStarted: (title, week) => `⚠ Кризис: «${title}»! Час перервано на тижні ${week}.`,
       calmWeeks: (from, to) => `Тижні ${from}–${to} минули спокійно.`,
       baseEventTitle: (title) => `⚡ Подія: ${title}`,
@@ -321,6 +387,27 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
         `🕊 Велике примирення: заморожені шари розморожено, настрій піднято до ${floor}. Ціна: скарбниця −${cost} млрд, стабільність −${stab}.`,
       consequencesLine: (treasury, rest) =>
         `Наслідки: ${[treasury ? `скарбниця ${treasury} млрд` : null, rest].filter(Boolean).join(' | ')}`,
+      noteWarDeclared: (title) => `оголошено війну: ${title}`,
+      noteCrisisStarted: (title) => `розпочалася кризова арка: ${title}`,
+      coupUltimatum: '⚠ Телеультиматум генералів: армія вимагає поступок.',
+      coupSuppressed: '⚠ Переворот придушено: армія лишилася вірною.',
+      protestsCalmed: '⚠ Протести вщухли: президент пішов на переговори й виконав умови опозиції.',
+      protestsClashes: '⚠ Зіткнення протестувальників із поліцією: стабільність падає.',
+      civilWarBegins: '💥 Громадянська війна почалася.',
+      civilWarConsumed: '💥 Громадянська війна поглинула країну.',
+      protestsOrderRestored: '⚠ Повстання придушено: порядок відновлено.',
+      oligarchsBribe: '⚠ Олігархи запропонували угоду — хабар прийнято. Скарбниця потяжчішала, робітники незадоволені.',
+      oligarchsOpposition: '⚠ Олігархи фінансують опозицію.',
+      oligarchsOffer: '⚠ Олігархи пропонують «взаємовигідну співпрацю».',
+      invasionUltimatum: (neighbor) => `⚠ ${neighbor} вручила ультиматум.`,
+      invasionRepelled: (neighbor) => `⚠ ${neighbor} відбита! Країна святкує перемогу.`,
+      invasionSurrender: (neighbor) => `💥 Країна капітулювала перед ${neighbor}.`,
+      warStalemate: (neighbor) => `⚠ Війна з ${neighbor}: фронт тримається, скарбниця тане.`,
+      warVictory: (neighbor) => `⚠ Перемога над ${neighbor}! Репарації поповнили скарбницю.`,
+      warDefeat: (neighbor) => `⚠ Ганебний мир із ${neighbor}. Країна в жалобі.`,
+      warContinues: (neighbor) => `⚠ Війна з ${neighbor} триває: фронт завмер.`,
+      arcFizzled: (title) =>
+        `📖 Сюжет: «${title}» видихнувся — ЗМІ перемкнулися на нові теми, суспільство поступово забуло конфлікт.`,
     },
     finale: {
       header: '\n═══ КІНЕЦЬ ПРАВЛІННЯ ═══',
@@ -339,6 +426,12 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
         overthrown: 'Повалення / відставка',
         collapsed: 'Крах країни',
       },
+      descReelectedClean: 'Чесна перемога на виборах: країна задоволена правлінням.',
+      descReelectedWillful: 'Вольова перемога всупереч настроям: порядок перевесив невдоволення.',
+      descHandover: 'Термін завершено: владу мирно передано наступнику.',
+      descCoup: 'Військовий переворот: армія повалила президента.',
+      descCivilWar: 'Громадянська війна поглинула країну.',
+      descInvasion: (neighbor) => `Країна капітулювала перед ${neighbor}.`,
       surrenderDescription: 'Президент достроково подав у відставку.',
       stayPrompt: '\nКонцентрація влади достатня, щоб спробувати ЗАЛИШИТИСЯ при владі. Спробувати? (так/ні): ',
       stayFailedUnrest: 'Спроба втримати владу провалилася: країна збунтувалася проти президента.',
@@ -367,7 +460,7 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     saveNameInvalid: 'Save name cannot be empty.',
     autosavePrompt: (country, week, total) =>
       `\nAutosave found: "${country}", week ${week}/${total}. Continue? (yes/no): `,
-    saveVersionMismatch: (found) => `incompatible save version (${found}), version 1 required`,
+    saveVersionMismatch: (found, required) => `incompatible save version (${found}), version ${required} required`,
     loadFailed: (msg) => `⚠ Could not load the save: ${msg}. Starting a new run.`,
     continueLine: (country, week) => `\nThe rule of "${country}" continues. Week ${week}.`,
     status: {
@@ -421,8 +514,10 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
     },
     turn: {
       actionFailed: 'The advisors could not turn the president\'s words into a concrete plan. Nothing changed.',
+      actionDone: 'Action completed.',
       warDeclared: (title) => `⚠ War declared: ${title}`,
       warNoTarget: '⚠ The war never started: there is no such neighbor.',
+      warArcTitle: (neighbor) => `War: ${neighbor}`,
       crisisStarted: (title, week) => `⚠ Crisis: "${title}"! Time stopped at week ${week}.`,
       calmWeeks: (from, to) => `Weeks ${from}–${to} passed calmly.`,
       baseEventTitle: (title) => `⚡ Event: ${title}`,
@@ -435,6 +530,27 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
         `🕊 Grand reconciliation: frozen layers are thawed, mood raised to ${floor}. Price: treasury −${cost} bln, stability −${stab}.`,
       consequencesLine: (treasury, rest) =>
         `Consequences: ${[treasury ? `treasury ${treasury} bln` : null, rest].filter(Boolean).join(' | ')}`,
+      noteWarDeclared: (title) => `war declared: ${title}`,
+      noteCrisisStarted: (title) => `crisis arc started: ${title}`,
+      coupUltimatum: '⚠ The generals\' televised ultimatum: the army demands concessions.',
+      coupSuppressed: '⚠ The coup was suppressed: the army stayed loyal.',
+      protestsCalmed: '⚠ The protests died down: the president negotiated and met the opposition\'s demands.',
+      protestsClashes: '⚠ Clashes between protesters and police: stability is falling.',
+      civilWarBegins: '💥 The civil war has begun.',
+      civilWarConsumed: '💥 The civil war consumed the country.',
+      protestsOrderRestored: '⚠ The uprising was suppressed: order is restored.',
+      oligarchsBribe: '⚠ The oligarchs offered a deal — the bribe was accepted. The treasury grew heavier, the workers are unhappy.',
+      oligarchsOpposition: '⚠ The oligarchs are funding the opposition.',
+      oligarchsOffer: '⚠ The oligarchs offer "mutually beneficial cooperation".',
+      invasionUltimatum: (neighbor) => `⚠ ${neighbor} has delivered an ultimatum.`,
+      invasionRepelled: (neighbor) => `⚠ ${neighbor} was repelled! The country celebrates victory.`,
+      invasionSurrender: (neighbor) => `💥 The country surrendered to ${neighbor}.`,
+      warStalemate: (neighbor) => `⚠ War with ${neighbor}: the front holds, the treasury melts away.`,
+      warVictory: (neighbor) => `⚠ Victory over ${neighbor}! Reparations filled the treasury.`,
+      warDefeat: (neighbor) => `⚠ A shameful peace with ${neighbor}. The country mourns.`,
+      warContinues: (neighbor) => `⚠ The war with ${neighbor} drags on: the front is frozen.`,
+      arcFizzled: (title) =>
+        `📖 Story: "${title}" fizzled out — the media moved on to new topics, and society gradually forgot the conflict.`,
     },
     finale: {
       header: '\n═══ END OF RULE ═══',
@@ -453,6 +569,12 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
         overthrown: 'Overthrow / resignation',
         collapsed: 'Collapse of the country',
       },
+      descReelectedClean: 'A clean election victory: the country is content with the rule.',
+      descReelectedWillful: 'A willful victory despite public moods: order outweighed discontent.',
+      descHandover: 'The term is over: power was peacefully handed to a successor.',
+      descCoup: 'Military coup: the army overthrew the president.',
+      descCivilWar: 'Civil war consumed the country.',
+      descInvasion: (neighbor) => `The country surrendered to ${neighbor}.`,
       surrenderDescription: 'The president resigned early.',
       stayPrompt: '\nPower concentration is enough to try to STAY in power. Try? (yes/no): ',
       stayFailedUnrest: 'The attempt to hold power failed: the country rose against the president.',
@@ -517,6 +639,28 @@ export interface PromptStrings {
   finalStateLabel: string;
   populationLine: (popStart: string, popEnd: string, changePct: string, notable: boolean) => string;
   fallbackEpilogue: string;
+  // рендер хроники (ChronicleEntry): движок отдаёт ключи, текст — здесь
+  unknownRole: string; // роль персонажа пуста
+  arcOutcomeLabels: Record<ArcOutcomeKey, string>;
+  chAction: (summary: string) => string;
+  chBaseEvent: (title: string) => string;
+  chDynamicEvent: (title: string, description: string) => string;
+  chNewArc: (title: string) => string;
+  chArcProgress: (title: string, eventTitle: string) => string;
+  chArcBackground: (title: string, eventTitle: string) => string;
+  chArcFinished: (title: string, outcomeLabel: string) => string;
+  chCrisisStarted: (arcTitle: string) => string;
+  chAmnesty: (floor: number) => string;
+  chGameOver: (reason: string) => string;
+  chCoupUltimatum: string;
+  chProtestsClashes: string;
+  chCivilWar: string;
+  chHousingBubbleBurst: string;
+  chWarAccepted: (neighbor: string) => string;
+  chWarRejected: (neighbor: string) => string;
+  chWarFailed: string;
+  chOligarchsOffer: string;
+  chInvasionUltimatum: (neighbor: string) => string;
 }
 
 export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
@@ -579,6 +723,39 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
       `Население на старте: ${popStart} млн, в конце: ${popEnd} млн (изменение ${changePct}%).`
       + (notable ? ' Изменение заметное — обязательно упомяни демографические последствия (рождаемость, эмиграцию, старение).' : ''),
     fallbackEpilogue: 'История ещё напишет об этом правлении — пока рано подводить итоги.',
+    unknownRole: 'неизвестная роль',
+    arcOutcomeLabels: {
+      coup_suppressed: 'переворот подавлен',
+      protests_calm: 'мирный исход: протесты утихли',
+      order_restored: 'порядок восстановлен',
+      bribe_accepted: 'взятка принята',
+      opposition_funded: 'олигархи финансируют оппозицию',
+      invasion_repelled: 'вторжение отбито',
+      war_won: 'победа: репарации',
+      shameful_peace: 'позорный мир',
+      target_unavailable: 'цель недоступна',
+      fizzled: 'сошло на нет',
+    },
+    chAction: (summary) => `Действие: ${summary}`,
+    chBaseEvent: (title) => `Событие: ${title}`,
+    chDynamicEvent: (title, description) => `⚡ ${title}: ${description}`,
+    chNewArc: (title) => `📖 Открыта сюжетная арка «${title}»`,
+    chArcProgress: (title, eventTitle) => `Развитие арки «${title}»: ${eventTitle}`,
+    chArcBackground: (title, eventTitle) => `Фон кризиса «${title}»: ${eventTitle}`,
+    chArcFinished: (title, outcomeLabel) => `Арка «${title}» завершена: ${outcomeLabel}`,
+    chCrisisStarted: (arcTitle) => `⚠ Кризис: началась арка «${arcTitle}»`,
+    chAmnesty: (floor) =>
+      `Великое примирение: замороженные слои разморожены, настроение поднято до ${floor}`,
+    chGameOver: (reason) => `Конец правления: ${reason}`,
+    chCoupUltimatum: 'Генералы зачитали телеультиматум',
+    chProtestsClashes: 'Столкновения протестующих с полицией',
+    chCivilWar: 'Страна погрузилась в гражданскую войну',
+    chHousingBubbleBurst: 'Лопнул жилищный пузырь: рынок рухнул',
+    chWarAccepted: (neighbor) => `Народ принял решение о войне с ${neighbor}`,
+    chWarRejected: (neighbor) => `Общество не поверило в оправдание войны с ${neighbor}`,
+    chWarFailed: 'Попытка объявить войну провалилась: цель не найдена.',
+    chOligarchsOffer: 'Олигархи предложили «взаимовыгодное сотрудничество»',
+    chInvasionUltimatum: (neighbor) => `${neighbor} вручила ультиматум`,
   },
   uk: {
     settingPrefix: 'Сеттінг',
@@ -639,6 +816,39 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
       `Населення на старті: ${popStart} млн, в кінці: ${popEnd} млн (зміна ${changePct}%).`
       + (notable ? ' Зміна помітна — обов\'язково згадай демографічні наслідки (народжуваність, еміграцію, старіння).' : ''),
     fallbackEpilogue: 'Історія ще напише про це правління — поки зарано підбивати підсумки.',
+    unknownRole: 'невідома роль',
+    arcOutcomeLabels: {
+      coup_suppressed: 'переворот придушено',
+      protests_calm: 'мирний фінал: протести вщухли',
+      order_restored: 'порядок відновлено',
+      bribe_accepted: 'хабар прийнято',
+      opposition_funded: 'олігархи фінансують опозицію',
+      invasion_repelled: 'вторгнення відбито',
+      war_won: 'перемога: репарації',
+      shameful_peace: 'ганебний мир',
+      target_unavailable: 'ціль недоступна',
+      fizzled: 'зійшло на нівець',
+    },
+    chAction: (summary) => `Дія: ${summary}`,
+    chBaseEvent: (title) => `Подія: ${title}`,
+    chDynamicEvent: (title, description) => `⚡ ${title}: ${description}`,
+    chNewArc: (title) => `📖 Відкрито сюжетну арку «${title}»`,
+    chArcProgress: (title, eventTitle) => `Розвиток арки «${title}»: ${eventTitle}`,
+    chArcBackground: (title, eventTitle) => `Фон кризису «${title}»: ${eventTitle}`,
+    chArcFinished: (title, outcomeLabel) => `Арку «${title}» завершено: ${outcomeLabel}`,
+    chCrisisStarted: (arcTitle) => `⚠ Кризис: розпочалася арка «${arcTitle}»`,
+    chAmnesty: (floor) =>
+      `Велике примирення: заморожені шари розморожено, настрій піднято до ${floor}`,
+    chGameOver: (reason) => `Кінець правління: ${reason}`,
+    chCoupUltimatum: 'Генерали зачитали телеультиматум',
+    chProtestsClashes: 'Зіткнення протестувальників із поліцією',
+    chCivilWar: 'Країна поринула в громадянську війну',
+    chHousingBubbleBurst: 'Лопнула житлова бульбашка: ринок обвалився',
+    chWarAccepted: (neighbor) => `Народ ухвалив рішення про війну з ${neighbor}`,
+    chWarRejected: (neighbor) => `Суспільство не повірило у виправдання війни з ${neighbor}`,
+    chWarFailed: 'Спроба оголосити війну провалилася: ціль не знайдена.',
+    chOligarchsOffer: 'Олігархи запропонували «взаємовигідну співпрацю»',
+    chInvasionUltimatum: (neighbor) => `${neighbor} вручила ультиматум`,
   },
   en: {
     settingPrefix: 'Setting',
@@ -699,6 +909,39 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
       `Population at the start: ${popStart} mln, at the end: ${popEnd} mln (change ${changePct}%).`
       + (notable ? ' The change is significant — be sure to mention the demographic consequences (birth rate, emigration, aging).' : ''),
     fallbackEpilogue: 'History has yet to write about this rule — it is too early for final judgments.',
+    unknownRole: 'unknown role',
+    arcOutcomeLabels: {
+      coup_suppressed: 'coup suppressed',
+      protests_calm: 'peaceful outcome: the protests died down',
+      order_restored: 'order restored',
+      bribe_accepted: 'bribe accepted',
+      opposition_funded: 'the oligarchs fund the opposition',
+      invasion_repelled: 'invasion repelled',
+      war_won: 'victory: reparations',
+      shameful_peace: 'shameful peace',
+      target_unavailable: 'target unavailable',
+      fizzled: 'fizzled out',
+    },
+    chAction: (summary) => `Action: ${summary}`,
+    chBaseEvent: (title) => `Event: ${title}`,
+    chDynamicEvent: (title, description) => `⚡ ${title}: ${description}`,
+    chNewArc: (title) => `📖 Story arc "${title}" opened`,
+    chArcProgress: (title, eventTitle) => `Arc "${title}" develops: ${eventTitle}`,
+    chArcBackground: (title, eventTitle) => `Crisis background "${title}": ${eventTitle}`,
+    chArcFinished: (title, outcomeLabel) => `Arc "${title}" finished: ${outcomeLabel}`,
+    chCrisisStarted: (arcTitle) => `⚠ Crisis: arc "${arcTitle}" has started`,
+    chAmnesty: (floor) =>
+      `Grand reconciliation: frozen layers thawed, mood raised to ${floor}`,
+    chGameOver: (reason) => `End of rule: ${reason}`,
+    chCoupUltimatum: 'The generals read out a televised ultimatum',
+    chProtestsClashes: 'Clashes between protesters and police',
+    chCivilWar: 'The country sank into civil war',
+    chHousingBubbleBurst: 'The housing bubble burst: the market collapsed',
+    chWarAccepted: (neighbor) => `The people backed the war against ${neighbor}`,
+    chWarRejected: (neighbor) => `The public did not believe the justification for war with ${neighbor}`,
+    chWarFailed: 'The attempt to declare war failed: target not found.',
+    chOligarchsOffer: 'The oligarchs offered "mutually beneficial cooperation"',
+    chInvasionUltimatum: (neighbor) => `${neighbor} delivered an ultimatum`,
   },
 };
 
@@ -770,3 +1013,209 @@ export const MOCK_STRINGS: Record<UiLanguage, MockStrings> = {
       `Ten years have passed. ${country} remembers this rule — differently than expected. Ending: ${endingLabel}. Historians argue whether the price was justified, while the population (${popNow} mln vs ${popStart} mln at the start) simply lives on. Historians' score: ${scoreTotal}.`,
   },
 };
+
+// ─── Engine-facing strings and renderers (law 2) ───
+// Движок языка не знает: он хранит и передаёт стабильные id и ключи сообщений.
+// Отображаемые имена соседей, названия базовых ивентов и жёстких арок, а также
+// рендер ChronicleEntry / HappeningMsg / EndingReason в текст — всё здесь.
+
+// 7.6. Соседи: отображаемые имена на трёх языках (ключ — id из CONFIG.neighbors).
+export const NEIGHBOR_NAMES: Record<string, Record<UiLanguage, string>> = {
+  north_empire: { ru: 'Северная Империя', uk: 'Північна Імперія', en: 'Northern Empire' },
+  kraina: { ru: 'Республика Країн', uk: 'Республіка Країн', en: 'Republic of Kraina' },
+};
+
+// 7.7. Названия жёстких арок для игрока.
+export const HARD_ARC_TITLES: Record<UiLanguage, Record<HardArcId, string>> = {
+  ru: {
+    coup: 'Военный переворот',
+    protests: 'Протесты → гражданская война',
+    oligarchs: 'Олигархи',
+    invasion: 'Вторжение соседа',
+    offensive_war: 'Война', // полный заголовок — шаблон turn.warArcTitle
+  },
+  uk: {
+    coup: 'Військовий переворот',
+    protests: 'Протести → громадянська війна',
+    oligarchs: 'Олігархи',
+    invasion: 'Вторгнення сусіда',
+    offensive_war: 'Війна',
+  },
+  en: {
+    coup: 'Military coup',
+    protests: 'Protests → civil war',
+    oligarchs: 'Oligarchs',
+    invasion: 'Neighbor invasion',
+    offensive_war: 'War',
+  },
+};
+
+// 7.8. Названия базовых ивентов (ключ — id из CONFIG.baseEvents).
+export const BASE_EVENT_TITLES: Record<UiLanguage, Record<string, string>> = {
+  ru: {
+    earthquake: 'Землетрясение в регионе',
+    oil_boom: 'Нашли месторождение',
+    athlete_win: 'Сборная выиграла чемпионат',
+    brain_drain: 'Утечка мозгов',
+    scandal: 'Коррупционный скандал в правительстве',
+    tech_breakthrough: 'Прорывная отечественная разработка',
+    student_unrest: 'Студенческие волнения',
+    military_parade: 'Парад укрепил дух нации',
+    draft_fail: 'Призыв провалился: призывники не явились',
+    science_grant: 'Государственные гранты окупились',
+    folk_unity: 'Народный праздник единства',
+    tent_city: 'Палаточный городок бездомных у мэрии',
+  },
+  uk: {
+    earthquake: 'Землетрясення в регіоні',
+    oil_boom: 'Знайшли родовище',
+    athlete_win: 'Збірна виграла чемпіонат',
+    brain_drain: 'Витік мозків',
+    scandal: 'Корупційний скандал в уряді',
+    tech_breakthrough: 'Проривна вітчизняна розробка',
+    student_unrest: 'Студентські хвилювання',
+    military_parade: 'Парад зміцнив дух нації',
+    draft_fail: 'Призов провалився: призовники не з\'явилися',
+    science_grant: 'Державні гранти окупилися',
+    folk_unity: 'Народне свято єдності',
+    tent_city: 'Наметове містечко безпритульних біля мерії',
+  },
+  en: {
+    earthquake: 'Earthquake in the region',
+    oil_boom: 'Oil deposit discovered',
+    athlete_win: 'The national team won the championship',
+    brain_drain: 'Brain drain',
+    scandal: 'Corruption scandal in the government',
+    tech_breakthrough: 'Breakthrough homegrown development',
+    student_unrest: 'Student unrest',
+    military_parade: 'The parade lifted the nation\'s spirit',
+    draft_fail: 'The draft failed: conscripts never showed up',
+    science_grant: 'State grants paid off',
+    folk_unity: 'A folk festival of unity',
+    tent_city: 'A tent city of the homeless outside city hall',
+  },
+};
+
+// Отображаемое имя соседа по id; неизвестный id возвращается как есть.
+export function neighborName(lang: UiLanguage, id: string | null | undefined): string {
+  if (id && NEIGHBOR_NAMES[id]) return NEIGHBOR_NAMES[id][lang];
+  return id || '?';
+}
+
+// Отображаемое название базового ивента по id.
+export function baseEventTitle(lang: UiLanguage, id: string): string {
+  return BASE_EVENT_TITLES[lang][id] ?? id;
+}
+
+// Заголовок арки для печати: кастомные арки несут свой заголовок (текст LLM
+// на языке рана), жёсткие разрешаются по id (+имя цели для наступательной войны).
+export function arcTitle(
+  lang: UiLanguage,
+  arc: { id: string; title: string; warTarget: string | null },
+): string {
+  if (arc.title) return arc.title;
+  if (arc.id === 'offensive_war') {
+    return UI_STRINGS[lang].turn.warArcTitle(neighborName(lang, arc.warTarget));
+  }
+  return HARD_ARC_TITLES[lang][arc.id as HardArcId] ?? arc.id;
+}
+
+// Исход завершённой арки: ключ из таблицы 7.7, готовый текст или строка
+// из старого сейва (там все исходы — plain-строки).
+export function renderArcOutcome(lang: UiLanguage, outcome: ArcOutcome | string): string {
+  if (typeof outcome === 'object') return outcome.text;
+  return PROMPT_STRINGS[lang].arcOutcomeLabels[outcome as ArcOutcomeKey] ?? outcome;
+}
+
+// Причина концовки (7.9) → текст на языке рана.
+export function renderEndingReason(lang: UiLanguage, reason: EndingReason | string): string {
+  if (typeof reason === 'string') return reason; // старые сейвы
+  const f = UI_STRINGS[lang].finale;
+  switch (reason.k) {
+    case 'reelected_clean': return f.descReelectedClean;
+    case 'reelected_willful': return f.descReelectedWillful;
+    case 'handover': return f.descHandover;
+    case 'coup': return f.descCoup;
+    case 'civil_war': return f.descCivilWar;
+    case 'invasion': return f.descInvasion(neighborName(lang, reason.neighbor));
+  }
+}
+
+// Описание концовки: ключ причины от движка или готовый текст от UI-слоя.
+export function renderEndingDescription(lang: UiLanguage, d: EndingDescription | string): string {
+  if (typeof d === 'string') return d; // старые сейвы
+  if (d.k === 'text') return d.text;
+  return renderEndingReason(lang, d);
+}
+
+// Сообщение о ходе арки (HappeningMsg) → новостная строка на языке рана.
+export function renderHappening(lang: UiLanguage, msg: HappeningMsg): string {
+  const t = UI_STRINGS[lang].turn;
+  const n = (id: string) => neighborName(lang, id);
+  switch (msg.k) {
+    case 'coupUltimatum': return t.coupUltimatum;
+    case 'coupSuppressed': return t.coupSuppressed;
+    case 'protestsCalmed': return t.protestsCalmed;
+    case 'protestsClashes': return t.protestsClashes;
+    case 'civilWarBegins': return t.civilWarBegins;
+    case 'civilWarConsumed': return t.civilWarConsumed;
+    case 'protestsOrderRestored': return t.protestsOrderRestored;
+    case 'oligarchsBribe': return t.oligarchsBribe;
+    case 'oligarchsOpposition': return t.oligarchsOpposition;
+    case 'oligarchsOffer': return t.oligarchsOffer;
+    case 'invasionUltimatum': return t.invasionUltimatum(n(msg.neighbor));
+    case 'invasionRepelled': return t.invasionRepelled(n(msg.neighbor));
+    case 'invasionSurrender': return t.invasionSurrender(n(msg.neighbor));
+    case 'warStalemate': return t.warStalemate(n(msg.neighbor));
+    case 'warVictory': return t.warVictory(n(msg.neighbor));
+    case 'warDefeat': return t.warDefeat(n(msg.neighbor));
+    case 'warContinues': return t.warContinues(n(msg.neighbor));
+    case 'arcFizzled': return t.arcFizzled(msg.title);
+    case 'gameOver': return renderEndingReason(lang, msg.reason);
+  }
+}
+
+// Запись хроники (ChronicleEntry) → строка контекста для LLM на языке рана.
+// Plain-строки (сейвы до смены формата) проходят как есть.
+export function renderChronicleEntry(lang: UiLanguage, entry: ChronicleEntry | string): string {
+  if (typeof entry === 'string') return entry;
+  const p = PROMPT_STRINGS[lang];
+  switch (entry.k) {
+    case 'action': return p.chAction(entry.summary);
+    case 'baseEvent': return p.chBaseEvent(baseEventTitle(lang, entry.id));
+    case 'dynamicEvent': return p.chDynamicEvent(entry.title, entry.description);
+    case 'newArc': return p.chNewArc(entry.title);
+    case 'arcProgress':
+      return p.chArcProgress(
+        arcTitle(lang, { id: entry.arc, title: entry.title, warTarget: entry.warTarget }),
+        entry.eventTitle,
+      );
+    case 'arcBackground':
+      return p.chArcBackground(
+        arcTitle(lang, { id: entry.arc, title: entry.title, warTarget: entry.warTarget }),
+        entry.eventTitle,
+      );
+    case 'arcFinished':
+      return p.chArcFinished(
+        arcTitle(lang, { id: entry.arc, title: entry.title, warTarget: entry.warTarget }),
+        renderArcOutcome(lang, entry.outcome),
+      );
+    case 'crisisStarted':
+      return p.chCrisisStarted(
+        entry.arc === 'offensive_war'
+          ? UI_STRINGS[lang].turn.warArcTitle(neighborName(lang, entry.neighbor))
+          : (HARD_ARC_TITLES[lang][entry.arc as HardArcId] ?? entry.arc),
+      );
+    case 'amnesty': return p.chAmnesty(entry.floor);
+    case 'gameOver': return p.chGameOver(renderEndingReason(lang, entry.reason));
+    case 'coupUltimatum': return p.chCoupUltimatum;
+    case 'protestsClashes': return p.chProtestsClashes;
+    case 'civilWar': return p.chCivilWar;
+    case 'housingBubbleBurst': return p.chHousingBubbleBurst;
+    case 'warAccepted': return p.chWarAccepted(neighborName(lang, entry.neighbor));
+    case 'warRejected': return p.chWarRejected(neighborName(lang, entry.neighbor));
+    case 'warFailed': return p.chWarFailed;
+    case 'oligarchsOffer': return p.chOligarchsOffer;
+    case 'invasionUltimatum': return p.chInvasionUltimatum(neighborName(lang, entry.neighbor));
+  }
+}
