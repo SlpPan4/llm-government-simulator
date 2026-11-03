@@ -74,4 +74,21 @@ describe('Тест 7.8.1: дедупликация арок', () => {
     expect(s.arcs).toHaveLength(0);
     expect(s.finishedArcs).toHaveLength(1);
   });
+
+  it('resolvesArc по жёсткой арке её НЕ закрывает — развязку жёстких держит движок (7.7)', () => {
+    const s = makeState();
+    makeArc(s, { id: 'coup', title: 'Военный переворот', kind: 'hard', stage: 1 });
+    applyDynamicEvent(s, evt({ title: 'Генералы колеблются', parentArcId: 'coup', resolvesArc: true }));
+    expect(s.arcs).toHaveLength(1);
+    expect(s.arcs[0].stage).toBe(1);
+    expect(s.finishedArcs).toHaveLength(0);
+  });
+
+  it('продолжение по parentArcId не двигает стадию жёсткой арки', () => {
+    const s = makeState();
+    makeArc(s, { id: 'oligarchs', title: 'Олигархи', kind: 'hard', stage: 0 });
+    applyDynamicEvent(s, evt({ title: 'Олигархи гудят за кулисами', parentArcId: 'oligarchs' }));
+    expect(s.arcs[0].stage).toBe(0);
+    expect(s.chronicle.some((c) => c.includes('Фон кризиса'))).toBe(true);
+  });
 });

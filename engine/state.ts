@@ -282,14 +282,19 @@ export function applyDynamicEvent(state: GameState, evt: ValidatedDynamicEvent):
   if (parentArcId) {
     const parent = state.arcs.find((a) => a.id === parentArcId);
     if (parent) {
-      if (evt.resolvesArc) {
-        finishArc(state, parent, evt.title);
+      if (parent.kind === 'custom') {
+        if (evt.resolvesArc) {
+          finishArc(state, parent, evt.title);
+        } else {
+          parent.lastUpdateWeek = state.week;
+          parent.turns += 1;
+          // любое продолжение повышает стадию на 1, потолок 5 (7.8.1)
+          parent.stage = Math.min(parent.stage + 1, CONFIG.run.maxArcStage);
+          pushChronicle(state, `Развитие арки «${parent.title}»: ${evt.title}`);
+        }
       } else {
-        parent.lastUpdateWeek = state.week;
-        parent.turns += 1;
-        // любое продолжение повышает стадию на 1, потолок 5 (7.8.1)
-        parent.stage = Math.min(parent.stage + 1, CONFIG.run.maxArcStage);
-        pushChronicle(state, `Развитие арки «${parent.title}»: ${evt.title}`);
+        // жёсткие арки разрешает только движок (7.7); LLM лишь анонсирует фон
+        pushChronicle(state, `Фон кризиса «${parent.title}»: ${evt.title}`);
       }
     }
   }

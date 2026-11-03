@@ -98,10 +98,12 @@ export function buildNarratePrompt(
     p.narrateRules,
     p.tone[state.mode],
     p.newsFormat,
+    p.consistencyRule,
     p.strictJsonLabel,
     NARRATE_SCHEMA,
     p.narrateDynRules,
     p.arcContinueRule,
+    p.arcResolveRule,
     p.treasuryRule,
     p.writeIn,
     p.keysEnglish,
@@ -120,7 +122,7 @@ export function buildNarratePrompt(
       state.counters.arcsFinished,
       state.chronicleCollapsed,
     ),
-    `${p.activeArcsLabel}:\n` + (state.arcs.map((a) => p.arcEntry(a.id, a.title, a.stage)).join('\n') || p.none),
+    `${p.activeArcsLabel}:\n` + (state.arcs.map((a) => p.arcEntry(a.id, a.title, a.stage, a.description)).join('\n') || p.none),
     `${p.finishedArcsLabel}: ` + (state.finishedArcs.map((a) => `${a.title} — ${a.outcome}`).join('; ') || p.none),
     `${p.charactersLabel}: ` + (state.characters
       .map((c) => `${c.name}, ${c.role}, ${p.attitudeLabel} ${c.attitude}`)

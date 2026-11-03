@@ -477,8 +477,10 @@ export interface PromptStrings {
   none: string;
   countersLine: (actions: number, baseEvents: number, dynamicEvents: number, arcsFinished: number, chronicleCollapsed: number) => string;
   activeArcsLabel: string;
-  arcEntry: (id: string, title: string, stage: number) => string;
+  arcEntry: (id: string, title: string, stage: number, description: string) => string;
   arcContinueRule: string;
+  arcResolveRule: string;
+  consistencyRule: string;
   treasuryRule: string;
   finishedArcsLabel: string;
   charactersLabel: string;
@@ -531,8 +533,11 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     countersLine: (actions, baseEvents, dynamicEvents, arcsFinished, chronicleCollapsed) =>
       `Сводные счётчики рана: действий ${actions}, базовых ивентов ${baseEvents}, динамических событий ${dynamicEvents}, арок завершено ${arcsFinished}, схлопнуто старых записей хроники ${chronicleCollapsed}.`,
     activeArcsLabel: 'Активные арки',
-    arcEntry: (id, title, stage) => `id="${id}" «${title}» (стадия ${stage})`,
+    arcEntry: (id, title, stage, description) =>
+      `id="${id}" «${title}» (стадия ${stage})` + (description ? ` — суть конфликта: ${description}` : ''),
     arcContinueRule: 'ПРАВИЛО АРОК: newArc — только для сюжета, которого НЕТ среди активных арок. Если событие развивает одну из активных арок — верни parentArcId с её id, НЕ newArc. Запрещено открывать арку с названием, дословно повторяющим активную.',
+    arcResolveRule: 'ПРАВИЛО ИСХОДОВ АРОК: кастомные (📖) арки живы, пока жив их конфликт. Если действие президента выполнило требование арки или конфликт получил содержательный исход — верни dynamicEvent с parentArcId равным id этой арки и resolvesArc: true: арка завершится, а title события станет её итогом. Пока требование не выполнено — развивай арку: parentArcId с resolvesArc: false. Жёсткие кризисные арки (переворот, протесты, олигархи, вторжение, война) разрешает только движок — не завершай их сам, события лишь отражают их ход.',
+    consistencyRule: 'ПРАВИЛО СОГЛАСОВАННОСТИ: news, baseEventFlavor и dynamicEvent — один выпуск одной газеты об одном периоде. Они не должны противоречить друг другу по фактам, статусам персонажей из реестра и состоянию арок: если персонаж возглавил совет в одной заметке, он не может «молчать в заключении» в соседней.',
     treasuryRule: 'ПРАВИЛО КАЗНЫ: эффекты казны должны быть обоснованы самим действием или событием. Реформы, армия, стройки, субсидии — это РАСХОД (отрицательный эффект). Положительный эффект казны допустим, только если в действии явно есть источник дохода (налоги, пошлины, продажа, репарации) — и пропорционален ему.',
     finishedArcsLabel: 'Завершённые арки',
     charactersLabel: 'Персонажи',
@@ -586,8 +591,11 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     countersLine: (actions, baseEvents, dynamicEvents, arcsFinished, chronicleCollapsed) =>
       `Зведені лічильники рану: дій ${actions}, базових івентів ${baseEvents}, динамічних подій ${dynamicEvents}, арок завершено ${arcsFinished}, згорнуто старих записів хроніки ${chronicleCollapsed}.`,
     activeArcsLabel: 'Активні арки',
-    arcEntry: (id, title, stage) => `id="${id}" «${title}» (стадія ${stage})`,
+    arcEntry: (id, title, stage, description) =>
+      `id="${id}" «${title}» (стадія ${stage})` + (description ? ` — суть конфлікту: ${description}` : ''),
     arcContinueRule: 'ПРАВИЛО АРОК: newArc — лише для сюжету, якого НЕМАЄ серед активних арок. Якщо подія розвиває одну з активних арок — поверни parentArcId з її id, НЕ newArc. Заборонено відкривати арку з назвою, що дослівно повторює активну.',
+    arcResolveRule: 'ПРАВИЛО ФІНАЛІВ АРОК: кастомні (📖) арки живі, поки живий їхній конфлікт. Якщо дія президента виконала вимогу арки або конфлікт отримав змістовний фінал — поверни dynamicEvent з parentArcId, що дорівнює id цієї арки, і resolvesArc: true: арка завершиться, а title події стане її підсумком. Доки вимога не виконана — розвивай арку: parentArcId з resolvesArc: false. Жорсткі кризові арки (переворот, протести, олігархи, вторгнення, війну) розв\'язує лише рушій — не завершуй їх сам, події лише відображають їхній перебіг.',
+    consistencyRule: 'ПРАВИЛО УЗГОДЖЕНОСТІ: news, baseEventFlavor і dynamicEvent — один випуск однієї газети про один період. Вони не повинні суперечити одна одній за фактами, статусами персонажів із реєстру та станом арок: якщо персонаж очолив раду в одній нотатці, він не може «мовчати в ув\'язненні» в сусідній.',
     treasuryRule: 'ПРАВИЛО КАЗНИ: ефекти казни мають бути обґрунтовані самою дією або подією. Реформи, армія, будівництво, субсидії — це ВИТРАТА (негативний ефект). Додатний ефект казни допустимий, лише якщо в дії явно є джерело доходу (податки, мита, продаж, репарації) — і пропорційний йому.',
     finishedArcsLabel: 'Завершені арки',
     charactersLabel: 'Персонажі',
@@ -641,8 +649,11 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     countersLine: (actions, baseEvents, dynamicEvents, arcsFinished, chronicleCollapsed) =>
       `Run counters: actions ${actions}, base events ${baseEvents}, dynamic events ${dynamicEvents}, arcs finished ${arcsFinished}, collapsed old chronicle entries ${chronicleCollapsed}.`,
     activeArcsLabel: 'Active arcs',
-    arcEntry: (id, title, stage) => `id="${id}" "${title}" (stage ${stage})`,
+    arcEntry: (id, title, stage, description) =>
+      `id="${id}" "${title}" (stage ${stage})` + (description ? ` — the conflict: ${description}` : ''),
     arcContinueRule: 'ARC RULE: newArc is only for a plot that is NOT among the active arcs. If the event develops one of the active arcs, return parentArcId with its id, NOT newArc. Opening an arc whose title literally repeats an active one is forbidden.',
+    arcResolveRule: 'ARC OUTCOMES RULE: custom (📖) arcs live as long as their conflict lives. If the president\'s action fulfilled the arc\'s requirement or the conflict reached a meaningful outcome, return dynamicEvent with parentArcId set to that arc\'s id and resolvesArc: true: the arc ends and the event title becomes its outcome. While the requirement is unmet, develop the arc: parentArcId with resolvesArc: false. Hard crisis arcs (coup, protests, oligarchs, invasion, war) are resolved by the engine only — do not finish them yourself; events merely reflect their course.',
+    consistencyRule: 'CONSISTENCY RULE: news, baseEventFlavor and dynamicEvent are a single issue of a single newspaper covering a single period. They must not contradict each other on facts, registry character statuses and arc states: if a character heads a council in one item, they cannot be "silently imprisoned" in another.',
     treasuryRule: 'TREASURY RULE: treasury effects must be justified by the action or event itself. Reforms, the military, construction, subsidies are COSTS (negative effect). A positive treasury effect is allowed only if the action explicitly contains a revenue source (taxes, tariffs, sales, reparations) — and proportional to it.',
     finishedArcsLabel: 'Finished arcs',
     charactersLabel: 'Characters',

@@ -8,6 +8,7 @@ import {
 } from '../llm/prompts.js';
 import { MockLLM } from '../llm/client.js';
 import { PROMPT_STRINGS, UI_LANGUAGES, UI_STRINGS } from '../i18n.js';
+import { makeArc } from '../engine/state.js';
 import { makeState } from './helpers.js';
 
 const SETTING = 'киберпанк 2087';
@@ -79,6 +80,33 @@ describe('язык в промптах', () => {
     expect(buildParseActionPrompt(s, 'x', 'ru').system).toContain('русском языке');
     expect(buildParseActionPrompt(s, 'x', 'uk').system).toContain('українською мовою');
     expect(buildParseActionPrompt(s, 'x', 'en').system).toContain('in English');
+  });
+});
+
+describe('проблема 1: арки видны LLM с требованием', () => {
+  test('суть конфликта активной арки попадает в user-сообщение narrate', () => {
+    const requirement = 'Профсоюз требует независимости экзаменационных комиссий и амнистии Соколовой.';
+    for (const lang of UI_LANGUAGES) {
+      const s = makeRunState();
+      makeArc(s, {
+        id: 'экзаменационная_реформа',
+        title: 'Экзаменационный переполох в министерствах',
+        kind: 'custom',
+        stage: 5,
+        description: requirement,
+      });
+      const p = buildNarratePrompt(s, narrateCtx(), lang);
+      expect(p.user).toContain('id="экзаменационная_реформа"');
+      expect(p.user).toContain(requirement);
+    }
+  });
+
+  test('правило исходов арок и правило согласованности — в system на языке рана', () => {
+    for (const lang of UI_LANGUAGES) {
+      const p = buildNarratePrompt(makeRunState(), narrateCtx(), lang);
+      expect(p.system).toContain(PROMPT_STRINGS[lang].arcResolveRule);
+      expect(p.system).toContain(PROMPT_STRINGS[lang].consistencyRule);
+    }
   });
 });
 
