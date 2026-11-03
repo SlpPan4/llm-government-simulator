@@ -1,5 +1,7 @@
 // Кризисные триггеры и сюжетные арки (7.7). Арка продвигается раз за ход.
 // Действие с actionType "war" стартует offensive_war вместо applyEffects.
+// Движок языка не знает (закон 2): вместо готовых строк он отдаёт ключи
+// сообщений (HappeningMsg / ChronicleEntry), которые рендерятся в i18n.ts.
 
 import { CONFIG, MOOD_KEYS, clamp } from './config.js';
 import {
@@ -8,34 +10,54 @@ import {
   type ArcState, type GameState,
 } from './state.js';
 import { pushChronicle } from './chronicle.js';
+import type { EndingReason } from './score.js';
 import type { ParsedAction } from './validator.js';
+
+// Сообщение для игрока о ходе арки: ключ + нейтральные параметры
+// (id соседа, заголовок кастомной арки).
+export type HappeningMsg =
+  | { k: 'coupUltimatum' }
+  | { k: 'coupSuppressed' }
+  | { k: 'protestsCalmed' }
+  | { k: 'protestsClashes' }
+  | { k: 'civilWarBegins' }
+  | { k: 'civilWarConsumed' }
+  | { k: 'protestsOrderRestored' }
+  | { k: 'oligarchsBribe' }
+  | { k: 'oligarchsOpposition' }
+  | { k: 'oligarchsOffer' }
+  | { k: 'invasionUltimatum'; neighbor: string }
+  | { k: 'invasionRepelled'; neighbor: string }
+  | { k: 'invasionSurrender'; neighbor: string }
+  | { k: 'warStalemate'; neighbor: string }
+  | { k: 'warVictory'; neighbor: string }
+  | { k: 'warDefeat'; neighbor: string }
+  | { k: 'warContinues'; neighbor: string }
+  | { k: 'arcFizzled'; title: string }
+  | { k: 'gameOver'; reason: EndingReason };
 
 export interface ArcHappening {
   arcId: string;
-  title: string;
-  text: string;
   kind: 'stage' | 'endArc' | 'gameOver' | 'custom';
+  msg: HappeningMsg;
 }
 
 interface HardTriggerDef {
   id: 'coup' | 'protests' | 'oligarchs' | 'invasion';
-  title: string;
   check: (state: GameState) => boolean;
   force?: (state: GameState) => boolean; // форс-старт со стадии 2
 }
 
-// Условия старта по 7.7.
+// Условия старта по 7.7. Названия жёстких арок для игрока — в i18n.ts.
 export const HARD_TRIGGERS: readonly HardTriggerDef[] = [
   {
     id: 'coup',
-    title: 'Военный переворот',
     // band(military) <= disliking И avgMood <= 40
     check: (s) => bandAtMost(s.mood.military, 'disliking') && avgMood(s) <= CONFIG.arcs.coup.avgMoodMax,
     force: (s) => bandOf(s.mood.military) === 'impeachment',
   },
   {
     id: 'protests',
-    title: 'Протесты → гражданская война',
     // (workers И/ИЛИ youth в disliking или ниже) И (freedom < 50 ИЛИ homelessness > 25)
     check: (s) =>
       (bandAtMost(s.mood.workers, 'disliking') || bandAtMost(s.mood.youth, 'disliking'))
@@ -45,13 +67,11 @@ export const HARD_TRIGGERS: readonly HardTriggerDef[] = [
   },
   {
     id: 'oligarchs',
-    title: 'Олигархи',
     check: (s) => s.stats.corruption > CONFIG.arcs.oligarchs.corruptionAbove
       && s.stats.economy > CONFIG.arcs.oligarchs.economyAbove,
   },
   {
     id: 'invasion',
-    title: 'Вторжение соседа',
     // у соседа: strength > 1.5 * (50 + pc/2) И relations < −40 И stability < 45
     check: (s) => s.neighbors.some((n) =>
       n.strength > CONFIG.arcs.invasion.strengthCoef
@@ -61,16 +81,16 @@ export const HARD_TRIGGERS: readonly HardTriggerDef[] = [
   },
 ];
 
-function startHardArc(state: GameState, def: { id: string; title: string }, forced: boolean, target: string | null): ArcState {
+function startHardArc(state: GameState, id: string, forced: boolean, target: string | null): ArcState {
   const arc = makeArc(state, {
-    id: def.id,
-    title: def.title,
+    id,
+    title: '',
     kind: 'hard',
     stage: forced ? 2 : 0,
     forceStarted: forced,
     warTarget: target,
   });
-  pushChronicle(state, `⚠ Кризис: началась арка «${def.title}»`);
+  pushChronicle(state, { k: 'crisisStarted', arc: id, neighbor: target });
   return arc;
 }
 
@@ -90,9 +110,9 @@ export function checkArcTriggers(state: GameState, newThisTurn: boolean): ArcSta
         x.strength > cfg.strengthCoef * (cfg.baseDefense + state.stats.powerConcentration * cfg.pcCoef)
         && x.relations < cfg.relationsBelow
         && state.stats.stability < cfg.stabilityBelow);
-      target = n?.name ?? null;
+      target = n?.id ?? null;
     }
-    const arc = startHardArc(state, def, forced, target);
+    const arc = startHardArc(state, def.id, forced, target);
     if (def.id === 'coup' && forced) {
       // форс-старт — мгновенный game over, права на мирный исход нет
       resolveCoup(state, arc, []);
@@ -103,13 +123,12 @@ export function checkArcTriggers(state: GameState, newThisTurn: boolean): ArcSta
 }
 
 // Война по инициативе игрока — только через actionType "war" (7.7).
-export function startOffensiveWar(state: GameState, targetName: string | null): ArcState | null {
+// targetId — id соседа; свободный текст игрока/LLM в id разрешает UI-слой.
+export function startOffensiveWar(state: GameState, targetId: string | null): ArcState | null {
   const t = CONFIG.arcs.offensiveWar;
-  const q = (targetName ?? '').trim().toLowerCase();
-  const target = state.neighbors.find((n) =>
-    n.name.toLowerCase() === q
-    || (q.length > 2 && n.name.toLowerCase().includes(q))
-    || (q.length > 2 && n.name.toLowerCase().split(/\s+/).some((w) => w.length > 3 && q.includes(w))));
+  const q = (targetId ?? '').trim().toLowerCase();
+  const target = state.neighbors.find((n) => n.id.toLowerCase() === q)
+    ?? state.neighbors.find((n) => q.length > 2 && n.id.toLowerCase().includes(q));
   if (!target) return null;
 
   // проверка оправдания
@@ -119,15 +138,15 @@ export function startOffensiveWar(state: GameState, targetName: string | null): 
   if (justification >= t.justificationThreshold) {
     addStatDelta(state, 'warMood', t.acceptedWarMood);
     addMoodDelta(state, 'military', t.acceptedMilitaryMood);
-    pushChronicle(state, `Народ принял решение о войне с ${target.name}`);
+    pushChronicle(state, { k: 'warAccepted', neighbor: target.id });
   } else {
     addStatDelta(state, 'stability', t.rejectedStability);
     addMoodDelta(state, 'youth', t.rejectedYouthMood);
     addMoodDelta(state, 'workers', t.rejectedWorkersMood);
     addStatDelta(state, 'warMood', t.rejectedWarMood);
-    pushChronicle(state, `Общество не поверило в оправдание войны с ${target.name}`);
+    pushChronicle(state, { k: 'warRejected', neighbor: target.id });
   }
-  return startHardArc(state, { id: 'offensive_war', title: `Война: ${target.name}` }, false, target.name);
+  return startHardArc(state, 'offensive_war', false, target.id);
 }
 
 export type ActionOutcome = { kind: 'effects'; amnestyApplied: boolean } | { kind: 'war'; arc: ArcState | null };
@@ -136,7 +155,7 @@ export type ActionOutcome = { kind: 'effects'; amnestyApplied: boolean } | { kin
 export function executeAction(state: GameState, action: ParsedAction): ActionOutcome {
   if (action.actionType === 'war') {
     const arc = startOffensiveWar(state, action.warTarget);
-    if (!arc) pushChronicle(state, 'Попытка объявить войну провалилась: цель не найдена.');
+    if (!arc) pushChronicle(state, { k: 'warFailed' });
     // действие засчитывается (абсурд, идеология), но эффекты не применяются
     state.absurdityTotal += action.absurdity;
     state.actionsCount += 1;
@@ -158,13 +177,12 @@ export function advanceArcs(state: GameState, skipIds: ReadonlySet<string> = new
     if (arc.kind === 'custom') {
       // кастомная арка без продолжений таймаутится
       if (state.week - arc.lastUpdateWeek > CONFIG.run.customArcTimeoutWeeks) {
-        finishArc(state, arc, 'сошло на нет');
+        finishArc(state, arc, 'fizzled');
         // новость вместо молчаливого исхода: скандал должен «выдохнуться» на глазах у игрока
         out.push({
           arcId: arc.id,
-          title: arc.title,
-          text: `📖 Сюжет: «${arc.title}» выдохлось — СМИ переключились на новые темы, общество постепенно забыло конфликт.`,
           kind: 'custom',
+          msg: { k: 'arcFizzled', title: arc.title },
         });
       }
       continue;
@@ -189,8 +207,8 @@ function advanceHardArc(state: GameState, arc: ArcState, out: ArcHappening[]): v
 function advanceCoup(state: GameState, arc: ArcState, out: ArcHappening[]): void {
   if (arc.stage === 0) {
     arc.stage = 1;
-    pushChronicle(state, 'Генералы зачитали телеультиматум');
-    out.push({ arcId: arc.id, title: arc.title, text: '⚠ Телеультиматум генералов: армия требует уступок.', kind: 'stage' });
+    pushChronicle(state, { k: 'coupUltimatum' });
+    out.push({ arcId: arc.id, kind: 'stage', msg: { k: 'coupUltimatum' } });
     return;
   }
   resolveCoup(state, arc, out);
@@ -199,16 +217,16 @@ function advanceCoup(state: GameState, arc: ArcState, out: ArcHappening[]): void
 function resolveCoup(state: GameState, arc: ArcState, out: ArcHappening[]): void {
   const c = CONFIG.arcs.coup;
   if (arc.forceStarted) {
-    setGameOver(state, 'overthrown', 'Военный переворот: армия свергла президента.');
-    out.push({ arcId: arc.id, title: arc.title, text: `💥 ${state.gameOver?.reason ?? 'Переворот.'}`, kind: 'gameOver' });
+    setGameOver(state, 'overthrown', { k: 'coup' });
+    out.push({ arcId: arc.id, kind: 'gameOver', msg: { k: 'gameOver', reason: { k: 'coup' } } });
     return;
   }
   if (state.mood.military * c.militaryMoodCoef + state.stats.powerConcentration * c.pcCoef > c.moodMax) {
-    finishArc(state, arc, 'переворот подавлен');
-    out.push({ arcId: arc.id, title: arc.title, text: '⚠ Переворот подавлен: армия осталась верна.', kind: 'endArc' });
+    finishArc(state, arc, 'coup_suppressed');
+    out.push({ arcId: arc.id, kind: 'endArc', msg: { k: 'coupSuppressed' } });
   } else {
-    setGameOver(state, 'overthrown', 'Военный переворот: армия свергла президента.');
-    out.push({ arcId: arc.id, title: arc.title, text: '💥 Переворот удался. Президент свергнут.', kind: 'gameOver' });
+    setGameOver(state, 'overthrown', { k: 'coup' });
+    out.push({ arcId: arc.id, kind: 'gameOver', msg: { k: 'gameOver', reason: { k: 'coup' } } });
   }
 }
 
@@ -218,38 +236,38 @@ function advanceProtests(state: GameState, arc: ArcState, out: ArcHappening[]): 
   const calm = bandIndex(bandOf(state.mood.workers)) >= bandIndex('neutral')
     && bandIndex(bandOf(state.mood.youth)) >= bandIndex('neutral');
   if (!arc.forceStarted && calm) {
-    finishArc(state, arc, 'мирный исход: протесты утихли');
-    out.push({ arcId: arc.id, title: arc.title, text: '⚠ Протесты утихли: президент пошёл на переговоры и выполнил условия оппозиции.', kind: 'endArc' });
+    finishArc(state, arc, 'protests_calm');
+    out.push({ arcId: arc.id, kind: 'endArc', msg: { k: 'protestsCalmed' } });
     return;
   }
   if (arc.stage === 0) {
     arc.stage = 1;
     addStatDelta(state, 'stability', p.stageStability);
-    pushChronicle(state, 'Столкновения протестующих с полицией');
-    out.push({ arcId: arc.id, title: arc.title, text: '⚠ Столкновения протестующих с полицией: стабильность падает.', kind: 'stage' });
+    pushChronicle(state, { k: 'protestsClashes' });
+    out.push({ arcId: arc.id, kind: 'stage', msg: { k: 'protestsClashes' } });
     return;
   }
   if (arc.stage === 1) {
     addStatDelta(state, 'stability', p.stageStability);
     if (state.stats.stability < p.civilWarStabilityBelow) {
       arc.stage = 2;
-      pushChronicle(state, 'Страна погрузилась в гражданскую войну');
-      out.push({ arcId: arc.id, title: arc.title, text: '💥 Гражданская война началась.', kind: 'stage' });
+      pushChronicle(state, { k: 'civilWar' });
+      out.push({ arcId: arc.id, kind: 'stage', msg: { k: 'civilWarBegins' } });
     }
     return;
   }
   // гражданская война: каждый ход казна −10, economy −5
   addTreasury(state, -p.warTreasuryDrain);
-  addStatDelta(state, 'economy', -p.warEconomyDrain);
+  addStatDelta(state, 'economy', p.warEconomyDrain);
   if (state.treasury < p.loseTreasuryBelow
     || state.mood.military * p.loseMilitaryCoef + state.treasury * p.loseTreasuryCoef < p.loseThreshold) {
-    setGameOver(state, 'collapsed', 'Гражданская война поглотила страну.');
-    out.push({ arcId: arc.id, title: arc.title, text: '💥 Гражданская война поглотила страну.', kind: 'gameOver' });
+    setGameOver(state, 'collapsed', { k: 'civil_war' });
+    out.push({ arcId: arc.id, kind: 'gameOver', msg: { k: 'gameOver', reason: { k: 'civil_war' } } });
     return;
   }
   if (state.stats.stability > p.winStabilityAbove) {
-    finishArc(state, arc, 'порядок восстановлен');
-    out.push({ arcId: arc.id, title: arc.title, text: '⚠ Восстание подавлено: порядок восстановлен.', kind: 'endArc' });
+    finishArc(state, arc, 'order_restored');
+    out.push({ arcId: arc.id, kind: 'endArc', msg: { k: 'protestsOrderRestored' } });
   }
 }
 
@@ -260,30 +278,30 @@ function advanceOligarchs(state: GameState, arc: ArcState, out: ArcHappening[]):
     addTreasury(state, o.bribeTreasury);
     addMoodDelta(state, 'elites', o.bribeElitesMood);
     addMoodDelta(state, 'workers', o.bribeWorkersMood);
-    finishArc(state, arc, 'взятка принята');
-    out.push({ arcId: arc.id, title: arc.title, text: '⚠ Олигархи предложили сделку — взятка принята. Казна потяжелела, рабочие недовольны.', kind: 'endArc' });
+    finishArc(state, arc, 'bribe_accepted');
+    out.push({ arcId: arc.id, kind: 'endArc', msg: { k: 'oligarchsBribe' } });
     return;
   }
   if (bandAtMost(state.mood.elites, 'disliking')) {
-    finishArc(state, arc, 'олигархи финансируют оппозицию');
-    out.push({ arcId: arc.id, title: arc.title, text: '⚠ Олигархи финансируют оппозицию.', kind: 'endArc' });
+    finishArc(state, arc, 'opposition_funded');
+    out.push({ arcId: arc.id, kind: 'endArc', msg: { k: 'oligarchsOpposition' } });
     return;
   }
   if (arc.stage === 0) {
     arc.stage = 1;
-    pushChronicle(state, 'Олигархи предложили «взаимовыгодное сотрудничество»');
-    out.push({ arcId: arc.id, title: arc.title, text: '⚠ Олигархи предлагают «взаимовыгодное сотрудничество».', kind: 'stage' });
+    pushChronicle(state, { k: 'oligarchsOffer' });
+    out.push({ arcId: arc.id, kind: 'stage', msg: { k: 'oligarchsOffer' } });
   }
 }
 
 // invasion: ультиматум → развязка по обороноспособности.
 function advanceInvasion(state: GameState, arc: ArcState, out: ArcHappening[]): void {
   const inv = CONFIG.arcs.invasion;
-  const target = state.neighbors.find((n) => n.name === arc.warTarget) ?? state.neighbors[0];
+  const target = state.neighbors.find((n) => n.id === arc.warTarget) ?? state.neighbors[0];
   if (arc.stage === 0) {
     arc.stage = 1;
-    pushChronicle(state, `${target.name} вручила ультиматум`);
-    out.push({ arcId: arc.id, title: arc.title, text: `⚠ ${target.name} вручила ультиматум.`, kind: 'stage' });
+    pushChronicle(state, { k: 'invasionUltimatum', neighbor: target.id });
+    out.push({ arcId: arc.id, kind: 'stage', msg: { k: 'invasionUltimatum', neighbor: target.id } });
     return;
   }
   let defense = state.mood.military + state.stats.stability
@@ -292,31 +310,31 @@ function advanceInvasion(state: GameState, arc: ArcState, out: ArcHappening[]): 
   if (defense > target.strength) {
     target.relations = clamp(target.relations + inv.winRelations, CONFIG.neighborRelationsScale.min, CONFIG.neighborRelationsScale.max);
     addStatDelta(state, 'warMood', inv.winWarMood);
-    finishArc(state, arc, 'вторжение отбито');
-    out.push({ arcId: arc.id, title: arc.title, text: `⚠ ${target.name} отбита! Страна празднует победу.`, kind: 'endArc' });
+    finishArc(state, arc, 'invasion_repelled');
+    out.push({ arcId: arc.id, kind: 'endArc', msg: { k: 'invasionRepelled', neighbor: target.id } });
   } else {
-    setGameOver(state, 'collapsed', `Страна капитулировала перед ${target.name}.`);
-    out.push({ arcId: arc.id, title: arc.title, text: `💥 Страна капитулировала перед ${target.name}.`, kind: 'gameOver' });
+    setGameOver(state, 'collapsed', { k: 'invasion', neighbor: target.id });
+    out.push({ arcId: arc.id, kind: 'gameOver', msg: { k: 'gameOver', reason: { k: 'invasion', neighbor: target.id } } });
   }
 }
 
 // offensive_war: еженедельные потери, развязка со 2-го хода войны.
 function advanceOffensiveWar(state: GameState, arc: ArcState, out: ArcHappening[]): void {
   const w = CONFIG.arcs.offensiveWar;
-  const target = state.neighbors.find((n) => n.name === arc.warTarget);
+  const target = state.neighbors.find((n) => n.id === arc.warTarget);
   if (!target) { // сосед исчез — закрываем арку без последствий
-    finishArc(state, arc, 'цель недоступна');
+    finishArc(state, arc, 'target_unavailable');
     return;
   }
   addTreasury(state, -w.turnTreasuryDrain);
-  addStatDelta(state, 'economy', -w.turnEconomyDrain);
+  addStatDelta(state, 'economy', w.turnEconomyDrain);
   for (const n of state.neighbors) {
-    if (n.name !== target.name) {
+    if (n.id !== target.id) {
       n.relations = clamp(n.relations + w.otherNeighborsRelations, CONFIG.neighborRelationsScale.min, CONFIG.neighborRelationsScale.max);
     }
   }
   if (arc.turns < 2) {
-    out.push({ arcId: arc.id, title: arc.title, text: `⚠ Война с ${target.name}: фронт держится, казна тает.`, kind: 'stage' });
+    out.push({ arcId: arc.id, kind: 'stage', msg: { k: 'warStalemate', neighbor: target.id } });
     return;
   }
   const attack = state.mood.military * w.attackMilitaryCoef
@@ -330,15 +348,15 @@ function advanceOffensiveWar(state: GameState, arc: ArcState, out: ArcHappening[
     for (const n of state.neighbors) {
       n.relations = clamp(n.relations + w.winRelations, CONFIG.neighborRelationsScale.min, CONFIG.neighborRelationsScale.max);
     }
-    finishArc(state, arc, 'победа: репарации');
-    out.push({ arcId: arc.id, title: arc.title, text: `⚠ Победа над ${target.name}! Репарации пополнили казну.`, kind: 'endArc' });
+    finishArc(state, arc, 'war_won');
+    out.push({ arcId: arc.id, kind: 'endArc', msg: { k: 'warVictory', neighbor: target.id } });
   } else if (state.treasury < w.loseTreasuryBelow || attack < target.strength * w.loseStrengthCoef) {
     addTreasury(state, w.loseTreasury);
     addStatDelta(state, 'warMood', -state.stats.warMood); // warMood = 0
     for (const k of MOOD_KEYS) addMoodDelta(state, k, w.loseMoodAll);
-    finishArc(state, arc, 'позорный мир');
-    out.push({ arcId: arc.id, title: arc.title, text: `⚠ Позорный мир с ${target.name}. Страна в трауре.`, kind: 'endArc' });
+    finishArc(state, arc, 'shameful_peace');
+    out.push({ arcId: arc.id, kind: 'endArc', msg: { k: 'warDefeat', neighbor: target.id } });
   } else {
-    out.push({ arcId: arc.id, title: arc.title, text: `⚠ Война с ${target.name} продолжается: фронт замер.`, kind: 'stage' });
+    out.push({ arcId: arc.id, kind: 'stage', msg: { k: 'warContinues', neighbor: target.id } });
   }
 }

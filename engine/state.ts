@@ -5,11 +5,17 @@ import {
   STAT_KEYS, MOOD_KEYS,
   type GameMode, type IdeologyTag, type MoodBand, type MoodKey, type StatKey,
 } from './config.js';
-import { pushChronicle, addCharacter, findCharacter } from './chronicle.js';
+import {
+  pushChronicle, addCharacter, findCharacter,
+  type ArcOutcome, type ChronicleEntry,
+} from './chronicle.js';
+import type { EndingDescription, EndingReason } from './score.js';
 import type { ParsedAction, ValidatedDynamicEvent } from './validator.js';
 
+// Сосед идентифицируется стабильным id из конфига; отображаемое имя
+// на языке рана даёт слой локализации (i18n.ts, NEIGHBOR_NAMES).
 export interface NeighborState {
-  name: string;
+  id: string;
   strength: number;
   relations: number;
 }
@@ -23,6 +29,8 @@ export interface Character {
 
 export interface ArcState {
   id: string; // 'coup' | 'protests' | '...' или slug кастомной арки
+  // Заголовок только для кастомных арок (текст LLM на языке рана).
+  // У жёстких арок пусто — название разрешается по id в слое локализации.
   title: string;
   kind: 'hard' | 'custom';
   stage: number;
@@ -30,19 +38,19 @@ export interface ArcState {
   startedWeek: number;
   lastUpdateWeek: number; // для таймаута кастомных арок
   forceStarted: boolean;
-  warTarget: string | null; // имя соседа для войн
+  warTarget: string | null; // id соседа для войн
   description: string;
 }
 
 export interface FinishedArc {
   id: string;
   title: string;
-  outcome: string;
+  outcome: ArcOutcome;
 }
 
 export interface GameOverInfo {
   ending: 'overthrown' | 'collapsed';
-  reason: string;
+  reason: EndingDescription; // движок даёт ключ, UI-слой может подложить текст
 }
 
 export interface RunCounters {
@@ -77,7 +85,8 @@ export interface GameState {
   amnestyCount: number; // лимит применений за ран
   arcs: ArcState[];
   finishedArcs: FinishedArc[];
-  chronicle: string[];
+  // Структурированные записи (ключи сообщений); plain-строки — из старых сейвов.
+  chronicle: Array<ChronicleEntry | string>;
   chronicleCollapsed: number;
   counters: RunCounters;
   characters: Character[];
@@ -134,10 +143,6 @@ export function bandOf(value: number): MoodBand {
 
 export function bandIndex(band: MoodBand): number {
   return CONFIG.moodBands.findIndex((b) => b.band === band);
-}
-
-export function bandLabel(band: MoodBand): string {
-  return CONFIG.moodBands.find((b) => b.band === band)?.label ?? band;
 }
 
 // «в поясе band или ниже»
@@ -216,7 +221,7 @@ export function applyImpeachmentAmnesty(state: GameState): boolean {
   addStatDelta(state, 'stability', -cfg.stabilityCost);
   state.amnestyCount = (state.amnestyCount ?? 0) + 1;
   state.lastAmnestyWeek = state.week;
-  pushChronicle(state, `Великое примирение: замороженные слои разморожены, настроение поднято до ${cfg.floor}`);
+  pushChronicle(state, { k: 'amnesty', floor: cfg.floor });
   return true;
 }
 
@@ -245,16 +250,20 @@ export function makeArc(
   return arc;
 }
 
-export function finishArc(state: GameState, arc: ArcState, outcome: string): void {
+export function finishArc(state: GameState, arc: ArcState, outcome: ArcOutcome): void {
   state.arcs = state.arcs.filter((a) => a !== arc);
   state.finishedArcs.push({ id: arc.id, title: arc.title, outcome });
   state.counters.arcsFinished += 1;
-  pushChronicle(state, `Арка «${arc.title}» завершена: ${outcome}`);
+  pushChronicle(state, { k: 'arcFinished', arc: arc.id, title: arc.title, warTarget: arc.warTarget, outcome });
 }
 
-export function setGameOver(state: GameState, ending: 'overthrown' | 'collapsed', reason: string): void {
+export function setGameOver(
+  state: GameState,
+  ending: 'overthrown' | 'collapsed',
+  reason: EndingReason,
+): void {
   state.gameOver = { ending, reason };
-  pushChronicle(state, `Конец правления: ${reason}`);
+  pushChronicle(state, { k: 'gameOver', reason });
 }
 
 // ─── Действия и события ───
@@ -274,7 +283,7 @@ export function applyAction(state: GameState, action: ParsedAction): void {
   for (const [k, v] of Object.entries(action.mood)) addMoodDelta(state, k as MoodKey, v);
   addTreasury(state, action.treasuryDelta);
   countAction(state, action);
-  pushChronicle(state, `Действие: ${action.summary}`);
+  pushChronicle(state, { k: 'action', summary: action.summary });
 }
 
 // Динамическое событие: эффекты + персонажи + кастомные арки (7.8.1).
@@ -300,7 +309,7 @@ export function applyDynamicEvent(state: GameState, evt: ValidatedDynamicEvent):
       const id = normalizeArcId(evt.newArc) || normalizeArcId(evt.title);
       if (id && !state.arcs.some((a) => a.id === id)) {
         makeArc(state, { id, title: evt.title, kind: 'custom', description: evt.description });
-        pushChronicle(state, `📖 Открыта сюжетная арка «${evt.title}»`);
+        pushChronicle(state, { k: 'newArc', title: evt.title });
       }
     }
   }
@@ -310,24 +319,30 @@ export function applyDynamicEvent(state: GameState, evt: ValidatedDynamicEvent):
     if (parent) {
       if (parent.kind === 'custom') {
         if (evt.resolvesArc) {
-          finishArc(state, parent, evt.title);
+          finishArc(state, parent, { k: 'text', text: evt.title });
         } else {
           parent.lastUpdateWeek = state.week;
           parent.turns += 1;
           // любое продолжение повышает стадию на 1, потолок 5 (7.8.1)
           parent.stage = Math.min(parent.stage + 1, CONFIG.run.maxArcStage);
-          pushChronicle(state, `Развитие арки «${parent.title}»: ${evt.title}`);
+          pushChronicle(state, {
+            k: 'arcProgress', arc: parent.id, title: parent.title,
+            warTarget: parent.warTarget, eventTitle: evt.title,
+          });
         }
       } else {
         // жёсткие арки разрешает только движок (7.7); LLM лишь анонсирует фон
-        pushChronicle(state, `Фон кризиса «${parent.title}»: ${evt.title}`);
+        pushChronicle(state, {
+          k: 'arcBackground', arc: parent.id, title: parent.title,
+          warTarget: parent.warTarget, eventTitle: evt.title,
+        });
       }
     }
   }
 
   state.counters.dynamicEvents += 1;
   state.lastDynamicEventWeek = state.week;
-  pushChronicle(state, `⚡ ${evt.title}: ${evt.description}`);
+  pushChronicle(state, { k: 'dynamicEvent', title: evt.title, description: evt.description });
 }
 
 // Кулдаун динамических событий (7.3).

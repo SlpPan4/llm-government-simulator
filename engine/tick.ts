@@ -157,7 +157,7 @@ export function tickWeek(state: GameState): void {
     s.economy = clampStat(s.economy + hb.burstEconomy);
     addMoodDelta(state, 'elites', hb.burstElitesMood);
     addTreasury(state, hb.burstTreasury);
-    pushChronicle(state, 'Лопнул жилищный пузырь: рынок рухнул');
+    pushChronicle(state, { k: 'housingBubbleBurst' });
   }
 
   // homelessness: пересчёт каждую неделю, не накапливается.

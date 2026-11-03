@@ -45,7 +45,7 @@ export interface ParsedAction {
 function neutralAction(): ParsedAction {
   return {
     ok: false,
-    summary: 'Советники не смогли превратить слова президента в конкретный план. Ничего не изменилось.',
+    summary: '', // UI-слой показывает своё локализованное сообщение при !ok
     actionType: 'other',
     warTarget: null,
     effects: {},
@@ -91,7 +91,8 @@ export function validateAction(raw: unknown, mode: GameMode): ParsedAction {
 
   return {
     ok: true,
-    summary: d.summary && d.summary.trim() ? d.summary.trim() : 'Действие выполнено.',
+    // пустой summary → UI-слой показывает локализованный дефолт
+    summary: d.summary && d.summary.trim() ? d.summary.trim() : '',
     actionType: d.actionType ?? 'other',
     warTarget: d.warTarget ?? null,
     effects,

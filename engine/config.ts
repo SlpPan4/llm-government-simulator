@@ -33,37 +33,42 @@ export type ActionType = (typeof ACTION_TYPES)[number];
 
 export type GameMode = 'realism' | 'creative';
 
+// 7.7. Идентификаторы жёстких арок: названия для игрока живут в i18n.ts
+// (движок языка не знает — закон 2), здесь — только ключи.
+export const HARD_ARC_IDS = ['coup', 'protests', 'oligarchs', 'invasion', 'offensive_war'] as const;
+export type HardArcId = (typeof HARD_ARC_IDS)[number];
+
 export const CONFIG = {
-  // 7.1
+  // 7.1 (подписи для игрока — в i18n.ts)
   stats: {
-    economy: { label: 'Экономика', start: 50 },
-    poverty: { label: 'Бедность', start: 40 },
-    unemployment: { label: 'Безработица', start: 15 },
-    inflation: { label: 'Инфляция', start: 10 },
-    freedom: { label: 'Свобода', start: 60 },
-    corruption: { label: 'Коррупция', start: 35 },
-    stability: { label: 'Стабильность', start: 65 },
-    powerConcentration: { label: 'Концентрация власти', start: 20 },
-    education: { label: 'Образование', start: 45 },
-    technology: { label: 'Технологический прогресс', start: 45 },
-    warMood: { label: 'Военное настроение', start: 10 },
+    economy: { start: 50 },
+    poverty: { start: 40 },
+    unemployment: { start: 15 },
+    inflation: { start: 10 },
+    freedom: { start: 60 },
+    corruption: { start: 35 },
+    stability: { start: 65 },
+    powerConcentration: { start: 20 },
+    education: { start: 45 },
+    technology: { start: 45 },
+    warMood: { start: 10 },
   },
 
   // 7.2. Слои и пояса настроений (применяются к каждой группе отдельно)
   moods: {
-    elites: { label: 'Элиты', start: 55 },
-    military: { label: 'Силовики', start: 60 },
-    workers: { label: 'Рабочие', start: 50 },
-    youth: { label: 'Молодёжь', start: 55 },
+    elites: { start: 55 },
+    military: { start: 60 },
+    workers: { start: 50 },
+    youth: { start: 55 },
   },
   moodBands: [
-    { band: 'impeachment', label: 'импичмент', min: 0, max: 4, growthMult: 0.0 },
-    { band: 'hatred', label: 'ненависть', min: 5, max: 19, growthMult: 0.5 },
-    { band: 'disliking', label: 'недолюбие', min: 20, max: 39, growthMult: 0.8 },
-    { band: 'unrest', label: 'недовольство', min: 40, max: 54, growthMult: 0.9 },
-    { band: 'neutral', label: 'нейтрально', min: 55, max: 65, growthMult: 1.0 },
-    { band: 'positive', label: 'позитив', min: 66, max: 85, growthMult: 1.3 },
-    { band: 'love', label: 'любовь', min: 86, max: 100, growthMult: 1.6 },
+    { band: 'impeachment', min: 0, max: 4, growthMult: 0.0 },
+    { band: 'hatred', min: 5, max: 19, growthMult: 0.5 },
+    { band: 'disliking', min: 20, max: 39, growthMult: 0.8 },
+    { band: 'unrest', min: 40, max: 54, growthMult: 0.9 },
+    { band: 'neutral', min: 55, max: 65, growthMult: 1.0 },
+    { band: 'positive', min: 66, max: 85, growthMult: 1.3 },
+    { band: 'love', min: 86, max: 100, growthMult: 1.6 },
   ],
 
   // 7.3. Общие параметры рана
@@ -104,10 +109,10 @@ export const CONFIG = {
     maxPerRun: 2,
   },
 
-  // 7.6. Соседи
+  // 7.6. Соседи: стабильные id; отображаемые имена — в i18n.ts (NEIGHBOR_NAMES)
   neighbors: [
-    { name: 'Северная Империя', strength: 80, relations: 0 },
-    { name: 'Республика Країн', strength: 45, relations: 20 },
+    { id: 'north_empire', strength: 80, relations: 0 },
+    { id: 'kraina', strength: 45, relations: 20 },
   ],
 
   // 7.8. Шанс базового ивента за ход
@@ -235,59 +240,60 @@ export const CONFIG = {
     },
   },
 
-  // 7.8. Базовые ивенты (скелеты; эффекты фиксированы и применяет движок)
+  // 7.8. Базовые ивенты (скелеты: id + условия + эффекты; эффекты фиксированы
+  // и применяет движок). Отображаемые названия — в i18n.ts (BASE_EVENT_TITLES).
   baseEvents: [
     {
-      id: 'earthquake', title: 'Землетрясение в регионе',
+      id: 'earthquake',
       effects: { treasury: -15, ifTreasuryNegativeMoodAll: -10 },
     },
     {
-      id: 'oil_boom', title: 'Нашли месторождение',
+      id: 'oil_boom',
       effects: { stats: { corruption: 5 }, treasury: 25 },
     },
     {
-      id: 'athlete_win', title: 'Сборная выиграла чемпионат',
+      id: 'athlete_win',
       effects: { moodAll: 5 },
     },
     {
-      id: 'brain_drain', title: 'Утечка мозгов',
+      id: 'brain_drain',
       when: { any: [{ stat: 'freedom', below: 40 }, { moodBandAtMost: { key: 'youth', band: 'hatred' } }] },
       effects: { stats: { economy: -5, technology: -3 }, mood: { youth: -5 } },
     },
     {
-      id: 'scandal', title: 'Коррупционный скандал в правительстве',
+      id: 'scandal',
       effects: { stats: { corruption: 5, stability: -5 } },
     },
     {
-      id: 'tech_breakthrough', title: 'Прорывная отечественная разработка',
+      id: 'tech_breakthrough',
       when: { any: [{ stat: 'technology', above: 60 }] },
       effects: { stats: { technology: 5, economy: 5, freedom: -3 } },
     },
     {
-      id: 'student_unrest', title: 'Студенческие волнения',
+      id: 'student_unrest',
       when: { all: [{ stat: 'education', above: 60 }, { stat: 'freedom', below: 40 }] },
       effects: { mood: { youth: -8 }, stats: { stability: -5 } },
     },
     {
-      id: 'military_parade', title: 'Парад укрепил дух нации',
+      id: 'military_parade',
       effects: { stats: { warMood: 5 }, mood: { military: 5 }, treasury: -5 },
     },
     {
-      id: 'draft_fail', title: 'Призыв провалился: призывники не явились',
+      id: 'draft_fail',
       when: { any: [{ stat: 'warMood', below: 20 }] },
       effects: { mood: { youth: -5 }, stats: { stability: -3 } },
     },
     {
-      id: 'science_grant', title: 'Государственные гранты окупились',
+      id: 'science_grant',
       effects: { stats: { education: 3 }, treasury: -5 },
     },
     {
-      id: 'folk_unity', title: 'Народный праздник единства',
+      id: 'folk_unity',
       when: { anyBandAtLeast: 'love' },
       effects: { moodAll: 3, stats: { stability: 3 } },
     },
     {
-      id: 'tent_city', title: 'Палаточный городок бездомных у мэрии',
+      id: 'tent_city',
       when: { any: [{ derived: 'homelessness', above: 15 }] },
       effects: { mood: { youth: -5 }, stats: { stability: -3 } },
     },

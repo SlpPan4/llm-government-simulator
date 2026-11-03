@@ -34,8 +34,7 @@ export interface BaseEventEffects {
 }
 
 export interface BaseEventDef {
-  readonly id: string;
-  readonly title: string;
+  readonly id: string; // отображаемое название — в i18n.ts (BASE_EVENT_TITLES)
   readonly when?: EventWhen;
   readonly effects: BaseEventEffects;
 }
@@ -95,5 +94,5 @@ export function applyBaseEvent(state: GameState, def: BaseEventDef): void {
     for (const k of MOOD_KEYS) addMoodDelta(state, k, e.ifTreasuryNegativeMoodAll);
   }
   state.counters.baseEvents += 1;
-  pushChronicle(state, `Событие: ${def.title}`);
+  pushChronicle(state, { k: 'baseEvent', id: def.id });
 }

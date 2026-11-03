@@ -5,26 +5,31 @@ import { avgMood, bandAtMost, bandOf, type GameState } from './state.js';
 
 export type EndingId = 'peaceful_handover' | 'reelected' | 'for_life' | 'overthrown' | 'collapsed';
 
+// Причина концовки от движка — нейтральный ключ (закон 2): подписи концовок
+// и тексты причин для игрока живут в i18n.ts (finale.endingLabels/desc*).
+// neighbor — id соседа, не отображаемое имя.
+export type EndingReason =
+  | { k: 'reelected_clean' }
+  | { k: 'reelected_willful' }
+  | { k: 'handover' }
+  | { k: 'coup' }
+  | { k: 'civil_war' }
+  | { k: 'invasion'; neighbor: string };
+
+// Описание концовки: ключ причины от движка либо готовый текст (например,
+// от UI-слоя: отставка, попытка остаться у власти).
+export type EndingDescription = EndingReason | { k: 'text'; text: string };
+
 export interface EndingResult {
   id: EndingId;
-  label: string;
   multiplier: number;
-  description: string;
+  description: EndingDescription;
 }
 
-const ENDING_LABELS: Record<EndingId, string> = {
-  peaceful_handover: 'Мирная передача власти',
-  reelected: 'Переизбрание',
-  for_life: 'Пожизненное правление',
-  overthrown: 'Свержение / отставка',
-  collapsed: 'Крах страны',
-};
-
-export function makeEnding(id: EndingId, description: string): EndingResult {
+export function makeEnding(id: EndingId, description: EndingDescription): EndingResult {
   const multKey = id === 'reelected' ? 'reelected' : id;
   return {
     id,
-    label: ENDING_LABELS[id],
     multiplier: CONFIG.endings.multipliers[multKey as keyof typeof CONFIG.endings.multipliers] as number,
     description,
   };
@@ -98,14 +103,14 @@ export function resolveTermEnding(state: GameState): EndingResult {
   const e = CONFIG.endings;
   const avg = avgMood(state);
   if (avg >= e.reelectAvgMood) {
-    return makeEnding('reelected', 'Честная победа на выборах: страна довольна правлением.');
+    return makeEnding('reelected', { k: 'reelected_clean' });
   }
   if (avg >= e.willfulAvgMood && state.stats.stability > e.willfulStability) {
-    const ending = makeEnding('reelected', 'Волевая победа вопреки настроениям: порядок перевесил недовольство.');
+    const ending = makeEnding('reelected', { k: 'reelected_willful' });
     ending.multiplier = CONFIG.endings.multipliers.reelected_willful;
     return ending;
   }
-  return makeEnding('peaceful_handover', 'Срок окончен: власть мирно передана преемнику.');
+  return makeEnding('peaceful_handover', { k: 'handover' });
 }
 
 // Концовка при game over (арки/война).
