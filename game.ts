@@ -20,13 +20,14 @@ import {
   stayAttemptAutoFails, stayAttemptSuccess,
 } from './engine/score.js';
 import {
-  LANGUAGE_MENU, LANGUAGE_NAMES, UI_LANGUAGES, UI_STRINGS,
+  LANGUAGE_MENU, LANGUAGE_NAMES, NEIGHBOR_NAMES, UI_LANGUAGES, UI_STRINGS,
+  arcTitle, baseEventTitle, neighborName, renderEndingDescription, renderHappening,
   type UiLanguage, type UiStrings,
 } from './i18n.js';
 import { createLLM, type LLM } from './llm/client.js';
 import {
   autosavePath, loadGame, resetTranscript, saveGame, savePathFor, tee, teeInput,
-  VersionMismatchError,
+  VersionMismatchError, SAVE_VERSION,
 } from './save.js';
 
 const MONTHS_TOTAL = CONFIG.run.termWeeks / 4;
@@ -69,12 +70,12 @@ function printStatus(state: GameState, lang: UiLanguage): void {
     ),
   );
   for (const n of state.neighbors) {
-    tee(t.status.neighborLine(n.name, n.strength, n.relations.toFixed(0)));
+    tee(t.status.neighborLine(neighborName(lang, n.id), n.strength, n.relations.toFixed(0)));
   }
   if (state.arcs.length > 0) {
     tee(t.status.arcsHeader);
     for (const a of state.arcs) {
-      tee(t.status.arcLine(a.title, a.stage + 1) + (a.kind === 'custom' ? ` ${t.status.customMark}` : ''));
+      tee(t.status.arcLine(arcTitle(lang, a), a.stage + 1) + (a.kind === 'custom' ? ` ${t.status.customMark}` : ''));
     }
   }
 }
@@ -87,8 +88,7 @@ function printAbsurdityBar(v: number, lang: UiLanguage): void {
 
 // Строка последствий действия (проблема 5): казна — всегда (с пояснением LLM,
 // если есть), дельты статов и настроений — при |Δ| ≥ 1. Пусто → не печатаем.
-function consequencesLine(parsed: ParsedAction, t: UiStrings): string | null {
-  const treasury = parsed.treasuryDelta !== 0
+function consequencesLine(parsed: ParsedAction, t: UiStrings): string | null {  const treasury = parsed.treasuryDelta !== 0
     ? `${parsed.treasuryDelta.toFixed(1)}${parsed.treasuryNote ? ` — ${parsed.treasuryNote}` : ''}`
     : null;
   const rest: string[] = [];
@@ -104,9 +104,27 @@ function consequencesLine(parsed: ParsedAction, t: UiStrings): string | null {
   return t.turn.consequencesLine(treasury, rest.join(', '));
 }
 
+// Свободный текст цели войны (игрок или LLM на языке рана) → id соседа.
+// Совпадение проверяется по id и по именам всех языков: LLM может вернуть
+// имя в любой раскладке, игрок печатает на своём языке.
+function resolveNeighborId(state: GameState, raw: string | null): string | null {
+  const q = (raw ?? '').trim().toLowerCase();
+  if (!q) return null;
+  const byId = state.neighbors.find((n) => n.id.toLowerCase() === q);
+  if (byId) return byId.id;
+  for (const n of state.neighbors) {
+    const names = NEIGHBOR_NAMES[n.id] ? Object.values(NEIGHBOR_NAMES[n.id]) : [n.id];
+    for (const name of names) {
+      const nl = name.toLowerCase();
+      if (nl === q || (q.length > 2 && nl.includes(q))) return n.id;
+      if (q.length > 2 && nl.split(/\s+/).some((w) => w.length > 3 && q.includes(w))) return n.id;
+    }
+  }
+  return null;
+}
+
 // Один ход: действие или пропуск → тик → арки → новости.
-async function playTurn(
-  state: GameState,
+async function playTurn(  state: GameState,
   llm: LLM,
   actionText: string | null,
   weeks: number,
@@ -129,12 +147,16 @@ async function playTurn(
     if (!parsed.ok) {
       tee(`\n${t.turn.actionFailed}`);
     } else {
+      if (parsed.actionType === 'war') {
+        parsed.warTarget = resolveNeighborId(state, parsed.warTarget);
+      }
       const outcome = executeAction(state, parsed);
-      tee(`\n▶ ${parsed.summary}`);
+      tee(`\n▶ ${parsed.summary || t.turn.actionDone}`);
       if (outcome.kind === 'war') {
         if (outcome.arc) {
-          tee(t.turn.warDeclared(outcome.arc.title));
-          turnNotes.push(`объявлена война: ${outcome.arc.title}`);
+          const title = arcTitle(lang, outcome.arc);
+          tee(t.turn.warDeclared(title));
+          turnNotes.push(t.turn.noteWarDeclared(title));
           skipIds.add(outcome.arc.id);
         } else {
           tee(t.turn.warNoTarget);
@@ -159,15 +181,17 @@ async function playTurn(
 
   const tickResult = tickWeeks(state, weeks);
   if (tickResult.startedArc) {
-    tee(`\n${t.turn.crisisStarted(tickResult.startedArc.title, state.week)}`);
-    turnNotes.push(`началась кризисная арка: ${tickResult.startedArc.title}`);
+    const title = arcTitle(lang, tickResult.startedArc);
+    tee(`\n${t.turn.crisisStarted(title, state.week)}`);
+    turnNotes.push(t.turn.noteCrisisStarted(title));
     skipIds.add(tickResult.startedArc.id);
   }
 
   const happenings = advanceArcs(state, skipIds);
   for (const h of happenings) {
-    tee(`\n${h.kind === 'gameOver' ? '💥' : ''} ${h.text}`);
-    turnNotes.push(h.text);
+    const text = renderHappening(lang, h.msg);
+    tee(`\n${h.kind === 'gameOver' ? '💥' : ''} ${text}`);
+    turnNotes.push(text);
   }
 
   if (state.gameOver) return;
@@ -196,7 +220,7 @@ async function playTurn(
 
   if (tickResult.baseEvent) {
     const flavor = news.baseEventFlavor;
-    tee(`\n${t.turn.baseEventTitle(flavor?.title ?? tickResult.baseEvent.title)}`);
+    tee(`\n${t.turn.baseEventTitle(flavor?.title ?? baseEventTitle(lang, tickResult.baseEvent.id))}`);
     if (flavor?.description) tee(flavor.description);
   }
   if (news.dynamicEvent) {
@@ -218,12 +242,12 @@ async function finale(state: GameState, llm: LLM, endingLabel: string | null, la
   const ending = state.gameOver
     ? endingFromGameOver(state)
     : endingLabel === 'surrender'
-      ? makeEnding('overthrown', t.finale.surrenderDescription)
+      ? makeEnding('overthrown', { k: 'text', text: t.finale.surrenderDescription })
       : resolveTermEnding(state);
 
   tee(t.finale.header);
   tee(t.finale.endingLabel(t.finale.endingLabels[ending.id]));
-  tee(ending.description);
+  tee(renderEndingDescription(lang, ending.description));
 
   const score = computeScore(state, ending);
 
@@ -323,7 +347,7 @@ async function main(): Promise<void> {
     } catch (err) {
       // loadGame бросает до восстановления транскрипта — буфер уже содержит баннер
       tee(tDefault.loadFailed(err instanceof VersionMismatchError
-        ? tDefault.saveVersionMismatch(String(err.found))
+        ? tDefault.saveVersionMismatch(String(err.found), SAVE_VERSION)
         : err instanceof Error ? err.message : String(err)));
     }
   }
@@ -406,7 +430,7 @@ async function main(): Promise<void> {
     if (t.commands.surrender.includes(cmdLower)) {
       await finale(state, llm, 'surrender', lang);
       // ран завершён досрочно — помечаем, чтобы автосейв не предлагал продолжить
-      state.gameOver = { ending: 'overthrown', reason: t.finale.surrenderDescription };
+      state.gameOver = { ending: 'overthrown', reason: { k: 'text', text: t.finale.surrenderDescription } };
       autoSaveQuiet(state); // финальный сейв: в файл попадает и эпилог
       rl.close();
       return;
@@ -435,11 +459,11 @@ async function main(): Promise<void> {
     const ans = await ask(t.finale.stayPrompt);
     if (ans && t.commands.yesWords.includes(ans.trim().toLowerCase())) {
       if (stayAttemptAutoFails(state)) {
-        ending = makeEnding('overthrown', t.finale.stayFailedUnrest);
+        ending = makeEnding('overthrown', { k: 'text', text: t.finale.stayFailedUnrest });
       } else if (stayAttemptSuccess(state)) {
-        ending = makeEnding('for_life', t.finale.staySuccess);
+        ending = makeEnding('for_life', { k: 'text', text: t.finale.staySuccess });
       } else {
-        ending = makeEnding('overthrown', t.finale.stayFailedElites);
+        ending = makeEnding('overthrown', { k: 'text', text: t.finale.stayFailedElites });
       }
     }
   }

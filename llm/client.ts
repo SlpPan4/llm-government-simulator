@@ -3,7 +3,7 @@
 
 import OpenAI from 'openai';
 import type { GameState } from '../engine/state.js';
-import { MOCK_STRINGS, PROMPT_STRINGS, type UiLanguage } from '../i18n.js';
+import { MOCK_STRINGS, PROMPT_STRINGS, baseEventTitle, neighborName, type UiLanguage } from '../i18n.js';
 import {
   buildEpiloguePrompt, buildNarratePrompt, buildParseActionPrompt, type NarrateContext,
 } from './prompts.js';
@@ -128,10 +128,14 @@ export class MockLLM implements LLM {
       'війн', 'вторгн', 'атакуват', 'бомб',
       'war', 'invade', 'attack', 'bomb', 'declare war')) {
       actionType = 'war';
-      const n = state.neighbors.find((x) =>
-        text.includes(x.name.toLowerCase())
-        || x.name.toLowerCase().split(/\s+/).some((w) => w.length > 3 && text.includes(w)));
-      warTarget = n ? n.name : (state.neighbors[0]?.name ?? null);
+      // warTarget — стабильный id соседа; свободный текст LLM/игрока
+      // в id разрешает UI-слой (по именам всех языков).
+      const n = state.neighbors.find((x) => {
+        const name = neighborName(this.lang, x.id).toLowerCase();
+        return text.includes(name)
+          || name.split(/\s+/).some((w) => w.length > 3 && text.includes(w));
+      });
+      warTarget = n ? n.id : (state.neighbors[0]?.id ?? null);
       tags.push('militarism');
     }
     if (has('образован', 'школ', 'университет', 'наук',
@@ -204,7 +208,7 @@ export class MockLLM implements LLM {
     }
 
     const summary = actionType === 'war'
-      ? t.warSummary(warTarget ?? '')
+      ? t.warSummary(warTarget ? neighborName(this.lang, warTarget) : '')
       : t.defaultSummary(actionText.trim());
 
     return {
@@ -232,8 +236,8 @@ export class MockLLM implements LLM {
     ].join(' ');
     const baseEventFlavor = ctx.baseEvent
       ? {
-          title: `${ctx.baseEvent.title} ${t.flavorSuffix}`,
-          description: t.flavorDescription(ctx.baseEvent.title.toLowerCase()),
+          title: `${baseEventTitle(this.lang, ctx.baseEvent.id)} ${t.flavorSuffix}`,
+          description: t.flavorDescription(baseEventTitle(this.lang, ctx.baseEvent.id).toLowerCase()),
         }
       : null;
 

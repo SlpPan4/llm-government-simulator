@@ -6,27 +6,36 @@
 // texts only and can never change numbers, triggers or game rules.
 
 import { CONFIG } from '../engine/config.js';
-import { avgMood, bandLabel, bandOf, type GameState } from '../engine/state.js';
-import { PROMPT_STRINGS, UI_STRINGS, type UiLanguage } from '../i18n.js';
+import { avgMood, bandOf, type GameState } from '../engine/state.js';
+import {
+  arcTitle, baseEventTitle, neighborName, renderArcOutcome, renderChronicleEntry,
+  PROMPT_STRINGS, UI_STRINGS, type UiLanguage,
+} from '../i18n.js';
 
 export interface NarrateContext {
   actionSummary: string | null;
   turnNotes: string[];
-  baseEvent: { id: string; title: string; description?: string } | null;
+  baseEvent: { id: string } | null; // id базового ивента; название — в i18n
   cooldownActive: boolean;
 }
 
 // Compact state serialization (numbers only). The Russian wrapper keys are
 // technical labels for the model; schema keys do not depend on them.
-function compactState(state: GameState): string {
+// Neighbor names and mood bands are rendered in the run language.
+function compactState(state: GameState, lang: UiLanguage): string {
+  const bands = UI_STRINGS[lang].status.bandLabels;
   return JSON.stringify({
     неделя: state.week,
     статы: state.stats,
     настроения: Object.fromEntries(
-      Object.entries(state.mood).map(([k, v]) => [k, { значение: v, пояс: bandLabel(bandOf(v)) }]),
+      Object.entries(state.mood).map(([k, v]) => [k, { значение: v, пояс: bands[bandOf(v)] }]),
     ),
     казна: Math.round(state.treasury * 100) / 100,
-    соседи: state.neighbors,
+    соседи: state.neighbors.map((n) => ({
+      имя: neighborName(lang, n.id),
+      сила: n.strength,
+      отношения: n.relations,
+    })),
     население_млн: Math.round(state.population * 1000) / 1000,
     бездомность_проц: Math.round(state.homelessness * 100) / 100,
     среднее_настроение: Math.round(avgMood(state) * 10) / 10,
@@ -79,9 +88,9 @@ export function buildParseActionPrompt(
   const user = [
     settingUserLine(state, lang),
     p.stateNumbersLabel,
-    compactState(state),
+    compactState(state, lang),
     `${p.neighborsLabel}: ` + state.neighbors
-      .map((n) => `${n.name} ${p.neighborShort(n.strength, n.relations)}`)
+      .map((n) => `${neighborName(lang, n.id)} ${p.neighborShort(n.strength, n.relations)}`)
       .join('; '),
     `${p.actionLabel}: «${actionText.trim()}»`,
   ].join('\n');
@@ -114,9 +123,9 @@ export function buildNarratePrompt(
   const user = [
     settingUserLine(state, lang),
     p.stateLabel,
-    compactState(state),
+    compactState(state, lang),
     `${p.chronicleLabel} ${p.chronicleTail(CONFIG.run.chronicleLimit)}`,
-    state.chronicle.join('\n') || p.empty,
+    state.chronicle.map((e) => renderChronicleEntry(lang, e)).join('\n') || p.empty,
     p.countersLine(
       state.counters.actions,
       state.counters.baseEvents,
@@ -124,13 +133,17 @@ export function buildNarratePrompt(
       state.counters.arcsFinished,
       state.chronicleCollapsed,
     ),
-    `${p.activeArcsLabel}:\n` + (state.arcs.map((a) => p.arcEntry(a.id, a.title, a.stage, a.description)).join('\n') || p.none),
-    `${p.finishedArcsLabel}: ` + (state.finishedArcs.map((a) => `${a.title} — ${a.outcome}`).join('; ') || p.none),
+    `${p.activeArcsLabel}:\n` + (state.arcs.map((a) =>
+      p.arcEntry(a.id, arcTitle(lang, a), a.stage, a.description)).join('\n') || p.none),
+    `${p.finishedArcsLabel}: ` + (state.finishedArcs.map((a) => {
+      const title = a.title || arcTitle(lang, { id: a.id, title: '', warTarget: null });
+      return `${title} — ${renderArcOutcome(lang, a.outcome)}`;
+    }).join('; ') || p.none),
     `${p.charactersLabel}: ` + (state.characters
-      .map((c) => `${c.name}, ${c.role}, ${p.attitudeLabel} ${c.attitude}`)
+      .map((c) => `${c.name}, ${c.role || p.unknownRole}, ${p.attitudeLabel} ${c.attitude}`)
       .join('; ') || p.none),
     `${p.ideologyLabel}: ` + ideologyLine(state, lang),
-    ctx.baseEvent ? p.baseEventGiven(ctx.baseEvent.title) : p.baseEventNone,
+    ctx.baseEvent ? p.baseEventGiven(baseEventTitle(lang, ctx.baseEvent.id)) : p.baseEventNone,
     ctx.cooldownActive ? p.cooldownOn : p.cooldownOff,
     ctx.actionSummary ? `${p.actionLabel}: ${ctx.actionSummary}` : p.noAction,
     `${p.turnEventsLabel}: ` + (ctx.turnNotes.join('; ') || p.nothing),
@@ -163,10 +176,10 @@ export function buildEpiloguePrompt(
     settingUserLine(state, lang),
     p.endingLine(state.countryName, endingLabel, scoreTotal),
     p.finalStateLabel,
-    compactState(state),
+    compactState(state, lang),
     `${p.chronicleLabel}:`,
-    state.chronicle.join('\n') || p.empty,
-    `${p.charactersLabel}: ` + (state.characters.map((c) => `${c.name}, ${c.role}`).join('; ') || p.none),
+    state.chronicle.map((e) => renderChronicleEntry(lang, e)).join('\n') || p.empty,
+    `${p.charactersLabel}: ` + (state.characters.map((c) => `${c.name}, ${c.role || p.unknownRole}`).join('; ') || p.none),
     p.populationLine(
       String(state.populationStart),
       String(Math.round(state.population * 1000) / 1000),

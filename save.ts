@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { normalizeArcId } from './engine/state.js';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 export const SAVES_DIR = 'saves';
 
 // Отдельный класс, чтобы game.ts мог показать локализованное сообщение
