@@ -124,7 +124,7 @@ export class MockLLM implements LLM {
     let actionType = 'other';
     let warTarget: string | null = null;
 
-    if (has('война', 'вторг', 'атаковать', 'бомбить', 'ударить по', 'объявить войну',
+    if (has('войн', 'вторг', 'атаковать', 'бомбить', 'ударить по', 'объявить войну',
       'війн', 'вторгн', 'атакуват', 'бомб',
       'war', 'invade', 'attack', 'bomb', 'declare war')) {
       actionType = 'war';
@@ -159,7 +159,11 @@ export class MockLLM implements LLM {
       effects.warMood = 6; effects.stability = 2; mood.military = 6; mood.youth = -3;
       treasuryDelta -= 5; tags.push('militarism');
     }
-    if (has('коррупц', 'корупц', 'corrupt')) {
+    if (has('коррупц', 'корупц', 'corrupt',
+      'тендер', 'отчётн', 'отчетн', 'прозрачн', 'аудит',
+      'прозор', 'звітн', 'публічн',
+      'tender', 'procure', 'audit', 'transparen', 'accountab')) {
+      // и репрессии, и процедуры (тендеры, отчётность, аудит) снижают коррупцию
       effects.corruption = -5; mood.workers = 3;
     }
     if (has('инфраструктур', 'дорог', 'мост', 'строительств', 'жиль',
