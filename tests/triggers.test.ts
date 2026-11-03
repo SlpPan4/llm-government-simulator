@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from 'vitest';
 import { makeState } from './helpers.js';
+import { renderHappening } from '../i18n.js';
 import {
   advanceArcs, checkArcTriggers, executeAction, HARD_TRIGGERS,
 } from '../engine/triggers.js';
@@ -31,7 +32,7 @@ describe('триггеры арок', () => {
     });
     const invasion = checkArcTriggers(s, false);
     expect(invasion?.id).toBe('invasion');
-    expect(invasion?.warTarget).toBe('Северная Империя');
+    expect(invasion?.warTarget).toBe('north_empire');
 
     // все 4 жёстких триггера присутствуют в конфиге
     expect(HARD_TRIGGERS.map((t) => t.id)).toEqual(['coup', 'protests', 'oligarchs', 'invasion']);
@@ -103,7 +104,7 @@ describe('триггеры арок', () => {
     s = createInitialState('realism', 'Тестландия');
     s.mood.military = 70; s.stats.warMood = 40; s.stats.technology = 60; s.treasury = 100;
     executeAction(s, validateAction(
-      { summary: 'война', actionType: 'war', warTarget: 'Республика Країн' },
+      { summary: 'война', actionType: 'war', warTarget: 'kraina' },
       'realism',
     ));
     advanceArcs(s); // ход 1 войны
@@ -115,7 +116,7 @@ describe('триггеры арок', () => {
   test('11. actionType "war" стартует арку offensive_war вместо applyEffects', () => {
     const s = makeState();
     const p = validateAction(
-      { summary: 'война', actionType: 'war', warTarget: 'Республика Країн', effects: { economy: 50 }, treasuryDelta: 100, absurdity: 10 },
+      { summary: 'война', actionType: 'war', warTarget: 'kraina', effects: { economy: 50 }, treasuryDelta: 100, absurdity: 10 },
       'realism',
     );
     const outcome = executeAction(s, p);
@@ -136,11 +137,12 @@ describe('триггеры арок', () => {
     s.week = 10 + CONFIG.run.customArcTimeoutWeeks + 1;
     const happenings = advanceArcs(s);
     expect(happenings).toHaveLength(1);
-    expect(happenings[0].text).toContain('Дело о пропавших креслах');
-    expect(happenings[0].text).toContain('СМИ');
+    expect(happenings[0].msg).toEqual({ k: 'arcFizzled', title: 'Дело о пропавших креслах' });
+    expect(renderHappening('ru', happenings[0].msg)).toContain('СМИ');
     expect(s.arcs).toHaveLength(0);
-    expect(s.finishedArcs.some((a) => a.id === 'старое_дело' && a.outcome === 'сошло на нет')).toBe(true);
-    expect(s.chronicle.some((c) => c.includes('завершена: сошло на нет'))).toBe(true);
+    expect(s.finishedArcs.some((a) => a.id === 'старое_дело' && a.outcome === 'fizzled')).toBe(true);
+    expect(s.chronicle.some((c) => typeof c !== 'string' && c.k === 'arcFinished' && c.outcome === 'fizzled'))
+      .toBe(true);
   });
 
   test('проблема 2: свежая кастомная арка на таймаут не проверяется', () => {

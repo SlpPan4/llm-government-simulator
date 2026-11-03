@@ -37,7 +37,7 @@ describe('MockLLM: антикоррупционная симметрия', () =>
   test('«объявляю войну» (вин. падеж) распознаётся как война', async () => {
     const r = await parse('объявляю войну Республике Країн');
     expect(r.actionType).toBe('war');
-    expect(r.warTarget).toBe('Республика Країн');
+    expect(r.warTarget).toBe('kraina'); // стабильный id соседа
   });
 
   test('проблема 3: «великое примирение» отдаёт флаг impeachmentAmnesty', async () => {

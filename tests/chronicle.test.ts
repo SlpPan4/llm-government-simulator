@@ -10,11 +10,11 @@ import { CONFIG } from '../engine/config.js';
 describe('хроника', () => {
   test('13. хроника не превышает лимит; старые записи схлопываются в счётчики', () => {
     const s = makeState();
-    for (let i = 0; i < 20; i++) pushChronicle(s, `запись ${i}`);
+    for (let i = 0; i < 20; i++) pushChronicle(s, { k: 'action', summary: `запись ${i}` });
     expect(s.chronicle.length).toBe(CONFIG.run.chronicleLimit);
     expect(s.chronicleCollapsed).toBe(20 - CONFIG.run.chronicleLimit);
-    expect(s.chronicle[CONFIG.run.chronicleLimit - 1]).toBe('запись 19'); // последние записи сохраняются
-    expect(s.chronicle[0]).toBe('запись 5');
+    expect(s.chronicle[CONFIG.run.chronicleLimit - 1]).toEqual({ k: 'action', summary: 'запись 19' });
+    expect(s.chronicle[0]).toEqual({ k: 'action', summary: 'запись 5' });
   });
 });
 

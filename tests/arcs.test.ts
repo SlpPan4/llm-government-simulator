@@ -89,6 +89,6 @@ describe('Тест 7.8.1: дедупликация арок', () => {
     makeArc(s, { id: 'oligarchs', title: 'Олигархи', kind: 'hard', stage: 0 });
     applyDynamicEvent(s, evt({ title: 'Олигархи гудят за кулисами', parentArcId: 'oligarchs' }));
     expect(s.arcs[0].stage).toBe(0);
-    expect(s.chronicle.some((c) => c.includes('Фон кризиса'))).toBe(true);
+    expect(s.chronicle.some((c) => typeof c !== 'string' && c.k === 'arcBackground')).toBe(true);
   });
 });

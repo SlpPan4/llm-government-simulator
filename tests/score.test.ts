@@ -15,7 +15,7 @@ describe('счёт и концовки', () => {
       s.stats.education = 20; s.stats.technology = 20; s.stats.warMood = 10;
       s.stats.powerConcentration = 90; s.treasury = 0; s.absurdityTotal = 0; s.actionsCount = 0;
     });
-    const badEnding: EndingResult = makeEnding('for_life', 'удержал власть');
+    const badEnding: EndingResult = makeEnding('for_life', { k: 'text', text: 'удержал власть' });
     const badScore = computeScore(bad, badEnding).total;
 
     // Хорошая страна, мирная передача (peaceful_handover ×1.0)
@@ -25,7 +25,7 @@ describe('счёт и концовки', () => {
       s.stats.education = 80; s.stats.technology = 80; s.stats.warMood = 20;
       s.treasury = 100; s.absurdityTotal = 0; s.actionsCount = 0;
     });
-    const goodScore = computeScore(good, makeEnding('peaceful_handover', 'мирный уход')).total;
+    const goodScore = computeScore(good, makeEnding('peaceful_handover', { k: 'text', text: 'мирный уход' })).total;
 
     expect(badScore).toBeLessThan(goodScore);
     expect(badEnding.multiplier).toBe(1.5); // диктатура ×1.5 и всё равно меньше
