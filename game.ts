@@ -88,9 +88,9 @@ function printAbsurdityBar(v: number, lang: UiLanguage): void {
 
 // Строка последствий действия (проблема 5): казна — всегда (с пояснением LLM,
 // если есть), дельты статов и настроений — при |Δ| ≥ 1. Пусто → не печатаем.
-function consequencesLine(parsed: ParsedAction, t: UiStrings): string | null {  const treasury = parsed.treasuryDelta !== 0
-    ? `${parsed.treasuryDelta.toFixed(1)}${parsed.treasuryNote ? ` — ${parsed.treasuryNote}` : ''}`
-    : null;
+function consequencesLine(parsed: ParsedAction, t: UiStrings): string | null {
+  const amount = parsed.treasuryDelta !== 0 ? parsed.treasuryDelta.toFixed(1) : null;
+  const note = amount && parsed.treasuryNote ? parsed.treasuryNote : null;
   const rest: string[] = [];
   const push = (labels: Record<string, string>, rec: Partial<Record<string, number>>) => {
     for (const [k, v] of Object.entries(rec)) {
@@ -100,8 +100,8 @@ function consequencesLine(parsed: ParsedAction, t: UiStrings): string | null {  
   };
   push(t.status.statLabels, parsed.effects);
   push(t.status.moodLabels, parsed.mood);
-  if (!treasury && rest.length === 0) return null;
-  return t.turn.consequencesLine(treasury, rest.join(', '));
+  if (!amount && rest.length === 0) return null;
+  return t.turn.consequencesLine(amount, note, rest.join(', '));
 }
 
 // Свободный текст цели войны (игрок или LLM на языке рана) → id соседа.

@@ -73,7 +73,8 @@ export interface TurnStrings {
   newspaperHeader: string;
   noHappenings: (from: number, to: number) => string;
   amnestyApplied: (floor: number, treasuryCost: number, stabilityCost: number) => string;
-  consequencesLine: (treasury: string | null, rest: string) => string;
+  // казна: сумма и пояснение LLM отдельно — единица (млрд/bln) живёт в шаблоне
+  consequencesLine: (treasuryAmount: string | null, treasuryNote: string | null, rest: string) => string;
   // заметки хода для narrate-промпта (на языке рана)
   noteWarDeclared: (title: string) => string;
   noteCrisisStarted: (title: string) => string;
@@ -242,8 +243,8 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       noHappenings: (from, to) => `Недели ${from}–${to} прошли без происшествий.`,
       amnestyApplied: (floor, cost, stab) =>
         `🕊 Великое примирение: замороженные слои разморожены, настроение поднято до ${floor}. Цена: казна −${cost} млрд, стабильность −${stab}.`,
-      consequencesLine: (treasury, rest) =>
-        `Последствия: ${[treasury ? `казна ${treasury} млрд` : null, rest].filter(Boolean).join(' | ')}`,
+      consequencesLine: (amount, note, rest) =>
+        `Последствия: ${[amount ? `казна ${amount} млрд${note ? ` — ${note}` : ''}` : null, rest].filter(Boolean).join(' | ')}`,
       noteWarDeclared: (title) => `объявлена война: ${title}`,
       noteCrisisStarted: (title) => `началась кризисная арка: ${title}`,
       coupUltimatum: '⚠ Телеультиматум генералов: армия требует уступок.',
@@ -385,8 +386,8 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       noHappenings: (from, to) => `Тижні ${from}–${to} минули без пригод.`,
       amnestyApplied: (floor, cost, stab) =>
         `🕊 Велике примирення: заморожені шари розморожено, настрій піднято до ${floor}. Ціна: скарбниця −${cost} млрд, стабільність −${stab}.`,
-      consequencesLine: (treasury, rest) =>
-        `Наслідки: ${[treasury ? `скарбниця ${treasury} млрд` : null, rest].filter(Boolean).join(' | ')}`,
+      consequencesLine: (amount, note, rest) =>
+        `Наслідки: ${[amount ? `скарбниця ${amount} млрд${note ? ` — ${note}` : ''}` : null, rest].filter(Boolean).join(' | ')}`,
       noteWarDeclared: (title) => `оголошено війну: ${title}`,
       noteCrisisStarted: (title) => `розпочалася кризова арка: ${title}`,
       coupUltimatum: '⚠ Телеультиматум генералів: армія вимагає поступок.',
@@ -528,8 +529,8 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       noHappenings: (from, to) => `Weeks ${from}–${to} passed without incidents.`,
       amnestyApplied: (floor, cost, stab) =>
         `🕊 Grand reconciliation: frozen layers are thawed, mood raised to ${floor}. Price: treasury −${cost} bln, stability −${stab}.`,
-      consequencesLine: (treasury, rest) =>
-        `Consequences: ${[treasury ? `treasury ${treasury} bln` : null, rest].filter(Boolean).join(' | ')}`,
+      consequencesLine: (amount, note, rest) =>
+        `Consequences: ${[amount ? `treasury ${amount} bln${note ? ` — ${note}` : ''}` : null, rest].filter(Boolean).join(' | ')}`,
       noteWarDeclared: (title) => `war declared: ${title}`,
       noteCrisisStarted: (title) => `crisis arc started: ${title}`,
       coupUltimatum: '⚠ The generals\' televised ultimatum: the army demands concessions.',
