@@ -6,7 +6,8 @@ import {
   advanceArcs, checkArcTriggers, executeAction, HARD_TRIGGERS,
 } from '../engine/triggers.js';
 import { validateAction } from '../engine/validator.js';
-import { createInitialState } from '../engine/state.js';
+import { createInitialState, makeArc } from '../engine/state.js';
+import { CONFIG } from '../engine/config.js';
 
 describe('триггеры арок', () => {
   test('3. каждый триггер из конфига: условие выполнено → арка стартовала', () => {
@@ -127,4 +128,27 @@ describe('триггеры арок', () => {
     expect(s.actionsCount).toBe(1);
     expect(s.absurdityTotal).toBe(10);
   });
+
+  test('проблема 2: таймаут кастомной арки — с новостью, а не молча', () => {
+    const s = makeState();
+    const arc = makeArc(s, { id: 'старое_дело', title: 'Дело о пропавших креслах', kind: 'custom' });
+    arc.lastUpdateWeek = 10;
+    s.week = 10 + CONFIG.run.customArcTimeoutWeeks + 1;
+    const happenings = advanceArcs(s);
+    expect(happenings).toHaveLength(1);
+    expect(happenings[0].text).toContain('Дело о пропавших креслах');
+    expect(happenings[0].text).toContain('СМИ');
+    expect(s.arcs).toHaveLength(0);
+    expect(s.finishedArcs.some((a) => a.id === 'старое_дело' && a.outcome === 'сошло на нет')).toBe(true);
+    expect(s.chronicle.some((c) => c.includes('завершена: сошло на нет'))).toBe(true);
+  });
+
+  test('проблема 2: свежая кастомная арка на таймаут не проверяется', () => {
+    const s = makeState();
+    makeArc(s, { id: 'свежак', title: 'Свежий скандал', kind: 'custom' });
+    s.week = CONFIG.run.customArcTimeoutWeeks; // прошло ровно столько, сколько лимит
+    expect(advanceArcs(s)).toHaveLength(0);
+    expect(s.arcs).toHaveLength(1);
+  });
+
 });

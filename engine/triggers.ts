@@ -158,7 +158,13 @@ export function advanceArcs(state: GameState, skipIds: ReadonlySet<string> = new
       // кастомная арка без продолжений таймаутится
       if (state.week - arc.lastUpdateWeek > CONFIG.run.customArcTimeoutWeeks) {
         finishArc(state, arc, 'сошло на нет');
-        out.push({ arcId: arc.id, title: arc.title, text: `📖 Сюжет: арка «${arc.title}» сошла на нет.`, kind: 'custom' });
+        // новость вместо молчаливого исхода: скандал должен «выдохнуться» на глазах у игрока
+        out.push({
+          arcId: arc.id,
+          title: arc.title,
+          text: `📖 Сюжет: «${arc.title}» выдохлось — СМИ переключились на новые темы, общество постепенно забыло конфликт.`,
+          kind: 'custom',
+        });
       }
       continue;
     }
