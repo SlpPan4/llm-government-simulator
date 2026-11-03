@@ -72,7 +72,9 @@ export interface GameState {
   absurdityTotal: number;
   actionsCount: number;
   ideology: Partial<Record<IdeologyTag, number>>;
-  impeachmentFrozen: Record<MoodKey, boolean>; // снимается только новым раном
+  impeachmentFrozen: Record<MoodKey, boolean>; // снимается новым раном или примирением
+  lastAmnestyWeek: number; // кулдаун «великого примирения»
+  amnestyCount: number; // лимит применений за ран
   arcs: ArcState[];
   finishedArcs: FinishedArc[];
   chronicle: string[];
@@ -107,6 +109,8 @@ export function createInitialState(mode: GameMode, countryName: string, setting 
     actionsCount: 0,
     ideology: {},
     impeachmentFrozen: { elites: false, military: false, workers: false, youth: false },
+    lastAmnestyWeek: -CONFIG.impeachmentAmnesty.cooldownWeeks, // первый жест доступен сразу
+    amnestyCount: 0,
     arcs: [],
     finishedArcs: [],
     chronicle: [],
@@ -192,6 +196,28 @@ export function addMoodDelta(state: GameState, key: MoodKey, delta: number): voi
   }
   state.mood[key] = clamp(state.mood[key] + d, CONFIG.statScale.min, CONFIG.statScale.max);
   if (state.mood[key] <= CONFIG.moodBands[0].max) state.impeachmentFrozen[key] = true;
+}
+
+// «Великое примирение»: снятие заморозки импичмента ценой казны и стабильности.
+// Вызывается, когда парсер LLM вернул impeachmentAmnesty: true (дорогой жест
+// примирения); старые сейвы без полей счётчиков лечатся значениями по умолчанию.
+export function applyImpeachmentAmnesty(state: GameState): boolean {
+  const cfg = CONFIG.impeachmentAmnesty;
+  if (!MOOD_KEYS.some((k) => state.impeachmentFrozen[k])) return false;
+  if ((state.amnestyCount ?? 0) >= cfg.maxPerRun) return false;
+  if (state.week - (state.lastAmnestyWeek ?? -cfg.cooldownWeeks) < cfg.cooldownWeeks) return false;
+  for (const k of MOOD_KEYS) {
+    if (state.impeachmentFrozen[k]) {
+      state.impeachmentFrozen[k] = false;
+      state.mood[k] = clamp(Math.max(state.mood[k], cfg.floor), CONFIG.statScale.min, CONFIG.statScale.max);
+    }
+  }
+  addTreasury(state, -cfg.treasuryCost);
+  addStatDelta(state, 'stability', -cfg.stabilityCost);
+  state.amnestyCount = (state.amnestyCount ?? 0) + 1;
+  state.lastAmnestyWeek = state.week;
+  pushChronicle(state, `Великое примирение: замороженные слои разморожены, настроение поднято до ${cfg.floor}`);
+  return true;
 }
 
 // ─── Арки (низкоуровневые операции) ───

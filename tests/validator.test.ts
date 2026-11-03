@@ -48,6 +48,23 @@ describe('валидатор действий', () => {
       expect(Object.keys(p.effects)).toHaveLength(0);
     }
   });
+
+  test('проблема 3: impeachmentAmnesty проходит, не-булево → false', () => {
+    expect(validateAction({ summary: 'x', impeachmentAmnesty: true }, 'realism').impeachmentAmnesty)
+      .toBe(true);
+    expect(validateAction({ summary: 'x', impeachmentAmnesty: 'да' }, 'realism').impeachmentAmnesty)
+      .toBe(false);
+    expect(validateAction({ summary: 'x' }, 'realism').impeachmentAmnesty).toBe(false);
+  });
+
+  test('проблема 5: treasuryNote проходит, обрезается до 80, мусор → null', () => {
+    expect(validateAction({ summary: 'x', treasuryNote: 'субсидии армии' }, 'realism').treasuryNote)
+      .toBe('субсидии армии');
+    expect(validateAction({ summary: 'x', treasuryNote: 'a'.repeat(200) }, 'realism').treasuryNote)
+      .toHaveLength(80);
+    expect(validateAction({ summary: 'x', treasuryNote: 5 }, 'realism').treasuryNote).toBeNull();
+    expect(validateAction({ summary: 'x' }, 'realism').treasuryNote).toBeNull();
+  });
 });
 
 describe('валидатор динамических событий', () => {

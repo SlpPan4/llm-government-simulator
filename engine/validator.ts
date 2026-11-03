@@ -22,8 +22,10 @@ const actionSchema = z.object({
   effects: looseRecord.optional(),
   mood: looseRecord.optional(),
   treasuryDelta: z.number().optional(),
+  treasuryNote: z.string().nullable().optional(),
   absurdity: z.number().optional(),
   ideologyTags: z.array(z.string()).optional(),
+  impeachmentAmnesty: z.boolean().optional(),
 });
 
 export interface ParsedAction {
@@ -34,8 +36,10 @@ export interface ParsedAction {
   effects: Partial<Record<StatKey, number>>;
   mood: Partial<Record<MoodKey, number>>;
   treasuryDelta: number;
+  treasuryNote: string | null;
   absurdity: number;
   ideologyTags: IdeologyTag[];
+  impeachmentAmnesty: boolean;
 }
 
 function neutralAction(): ParsedAction {
@@ -47,8 +51,10 @@ function neutralAction(): ParsedAction {
     effects: {},
     mood: {},
     treasuryDelta: 0,
+    treasuryNote: null,
     absurdity: 0,
     ideologyTags: [],
+    impeachmentAmnesty: false,
   };
 }
 
@@ -91,10 +97,15 @@ export function validateAction(raw: unknown, mode: GameMode): ParsedAction {
     effects,
     mood,
     treasuryDelta: finite(d.treasuryDelta) ? clampCap(d.treasuryDelta, caps.treasury) : 0,
+    // пояснение траты/прихода казны — короткая фраза (проблема 5)
+    treasuryNote: typeof d.treasuryNote === 'string' && d.treasuryNote.trim()
+      ? d.treasuryNote.trim().slice(0, 80)
+      : null,
     absurdity: finite(d.absurdity)
       ? clamp(d.absurdity, CONFIG.absurdity.min, CONFIG.absurdity.max)
       : 0,
     ideologyTags,
+    impeachmentAmnesty: d.impeachmentAmnesty === true,
   };
 }
 

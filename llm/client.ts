@@ -166,6 +166,13 @@ export class MockLLM implements LLM {
       // и репрессии, и процедуры (тендеры, отчётность, аудит) снижают коррупцию
       effects.corruption = -5; mood.workers = 3;
     }
+    let impeachmentAmnesty = false;
+    if (has('примир', 'амнист', 'помилов',
+      'примиренн', 'амніст', 'помилув',
+      'reconcil', 'amnest', 'pardon')) {
+      // дорогий жест примирения: движок сам решит, есть ли что размораживать
+      impeachmentAmnesty = true;
+    }
     if (has('инфраструктур', 'дорог', 'мост', 'строительств', 'жиль',
       'інфраструктур', 'доріг', 'міст', 'будівництв', 'житл',
       'infrastruct', 'road', 'bridge', 'construct', 'hous')) {
@@ -207,8 +214,10 @@ export class MockLLM implements LLM {
       effects,
       mood,
       treasuryDelta,
+      treasuryNote: null, // заглушка не поясняет траты
       absurdity,
       ideologyTags: [...new Set(tags)].slice(0, 3),
+      impeachmentAmnesty,
     };
   }
 

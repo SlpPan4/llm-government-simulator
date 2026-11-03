@@ -56,7 +56,7 @@ describe('язык в промптах', () => {
   test('13г. ключи схемы английские при любом языке, инструкции на месте', () => {
     const s = makeRunState();
     const parseKeys = ['"summary"', '"actionType"', '"warTarget"', '"effects"', '"mood"',
-      '"treasuryDelta"', '"absurdity"', '"ideologyTags"'];
+      '"treasuryDelta"', '"treasuryNote"', '"absurdity"', '"ideologyTags"', '"impeachmentAmnesty"'];
     const narrateKeys = ['"news"', '"baseEventFlavor"', '"dynamicEvent"', '"newArc"',
       '"parentArcId"', '"resolvesArc"', '"charactersReferenced"', '"newCharacter"'];
     for (const lang of UI_LANGUAGES) {
@@ -72,6 +72,14 @@ describe('язык в промптах', () => {
       expect(narrate.system).toContain(PROMPT_STRINGS[lang].writeIn);
       // инструкция о границах сеттинга
       expect(epilogue.system).toContain(PROMPT_STRINGS[lang].settingRule);
+    }
+  });
+
+  test('проблемы 3/5: правила примирения и пояснения казны — в system parse-промпта', () => {
+    for (const lang of UI_LANGUAGES) {
+      const p = buildParseActionPrompt(makeRunState(), 'амнистия', lang);
+      expect(p.system).toContain(PROMPT_STRINGS[lang].amnestyRule);
+      expect(p.system).toContain(PROMPT_STRINGS[lang].treasuryNoteRule);
     }
   });
 

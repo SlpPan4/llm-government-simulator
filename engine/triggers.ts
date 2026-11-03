@@ -4,7 +4,7 @@
 import { CONFIG, MOOD_KEYS, clamp } from './config.js';
 import {
   addMoodDelta, addStatDelta, addTreasury, avgMood, bandAtMost, bandIndex, bandOf,
-  finishArc, makeArc, setGameOver, applyAction,
+  finishArc, makeArc, setGameOver, applyAction, applyImpeachmentAmnesty,
   type ArcState, type GameState,
 } from './state.js';
 import { pushChronicle } from './chronicle.js';
@@ -130,9 +130,9 @@ export function startOffensiveWar(state: GameState, targetName: string | null): 
   return startHardArc(state, { id: 'offensive_war', title: `Война: ${target.name}` }, false, target.name);
 }
 
-export type ActionOutcome = { kind: 'effects' } | { kind: 'war'; arc: ArcState | null };
+export type ActionOutcome = { kind: 'effects'; amnestyApplied: boolean } | { kind: 'war'; arc: ArcState | null };
 
-// Маршрутизация действия: война — в арку, остальное — эффекты.
+// Маршрутизация действия: война — в арку, остальное — эффекты (+ примирение).
 export function executeAction(state: GameState, action: ParsedAction): ActionOutcome {
   if (action.actionType === 'war') {
     const arc = startOffensiveWar(state, action.warTarget);
@@ -145,7 +145,8 @@ export function executeAction(state: GameState, action: ParsedAction): ActionOut
     return { kind: 'war', arc };
   }
   applyAction(state, action);
-  return { kind: 'effects' };
+  const amnestyApplied = action.impeachmentAmnesty ? applyImpeachmentAmnesty(state) : false;
+  return { kind: 'effects', amnestyApplied };
 }
 
 // Продвижение всех активных арок на один ход.

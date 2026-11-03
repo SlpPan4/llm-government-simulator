@@ -11,6 +11,7 @@ const parse = async (text: string, lang: 'ru' | 'uk' | 'en' = 'ru') =>
     effects: Record<string, number>;
     actionType: string;
     warTarget: string | null;
+    impeachmentAmnesty: boolean;
   };
 
 describe('MockLLM: антикоррупционная симметрия', () => {
@@ -37,5 +38,11 @@ describe('MockLLM: антикоррупционная симметрия', () =>
     const r = await parse('объявляю войну Республике Країн');
     expect(r.actionType).toBe('war');
     expect(r.warTarget).toBe('Республика Країн');
+  });
+
+  test('проблема 3: «великое примирение» отдаёт флаг impeachmentAmnesty', async () => {
+    expect((await parse('великое примирение: амнистия и пакт с элитами')).impeachmentAmnesty)
+      .toBe(true);
+    expect((await parse('строю дороги и мосты')).impeachmentAmnesty).toBe(false);
   });
 });

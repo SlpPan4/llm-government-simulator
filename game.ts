@@ -14,7 +14,7 @@ import {
 } from './engine/state.js';
 import { tickWeeks } from './engine/tick.js';
 import { advanceArcs, executeAction } from './engine/triggers.js';
-import { validateAction, validateNarrate } from './engine/validator.js';
+import { validateAction, validateNarrate, type ParsedAction } from './engine/validator.js';
 import {
   avgAbsurdity, computeScore, endingFromGameOver, makeEnding, resolveTermEnding,
   stayAttemptAutoFails, stayAttemptSuccess,
@@ -85,6 +85,25 @@ function printAbsurdityBar(v: number, lang: UiLanguage): void {
   tee(`${t.status.absurdBarLabel}: [${'█'.repeat(filled)}${'░'.repeat(10 - filled)}] ${v}/100`);
 }
 
+// Строка последствий действия (проблема 5): казна — всегда (с пояснением LLM,
+// если есть), дельты статов и настроений — при |Δ| ≥ 1. Пусто → не печатаем.
+function consequencesLine(parsed: ParsedAction, t: UiStrings): string | null {
+  const treasury = parsed.treasuryDelta !== 0
+    ? `${parsed.treasuryDelta.toFixed(1)}${parsed.treasuryNote ? ` — ${parsed.treasuryNote}` : ''}`
+    : null;
+  const rest: string[] = [];
+  const push = (labels: Record<string, string>, rec: Partial<Record<string, number>>) => {
+    for (const [k, v] of Object.entries(rec)) {
+      if (typeof v !== 'number' || Math.abs(v) < 1) continue;
+      rest.push(`${labels[k]} ${v > 0 ? '+' : ''}${Math.round(v)}`);
+    }
+  };
+  push(t.status.statLabels, parsed.effects);
+  push(t.status.moodLabels, parsed.mood);
+  if (!treasury && rest.length === 0) return null;
+  return t.turn.consequencesLine(treasury, rest.join(', '));
+}
+
 // Один ход: действие или пропуск → тик → арки → новости.
 async function playTurn(
   state: GameState,
@@ -120,8 +139,19 @@ async function playTurn(
         } else {
           tee(t.turn.warNoTarget);
         }
-      } else if (parsed.absurdity > CONFIG.absurdity.printThreshold) {
-        printAbsurdityBar(parsed.absurdity, lang);
+      } else {
+        if (outcome.amnestyApplied) {
+          tee(t.turn.amnestyApplied(
+            CONFIG.impeachmentAmnesty.floor,
+            CONFIG.impeachmentAmnesty.treasuryCost,
+            CONFIG.impeachmentAmnesty.stabilityCost,
+          ));
+        }
+        const line = consequencesLine(parsed, t);
+        if (line) tee(line);
+        if (parsed.absurdity > CONFIG.absurdity.printThreshold) {
+          printAbsurdityBar(parsed.absurdity, lang);
+        }
       }
       actionSummary = parsed.summary;
     }

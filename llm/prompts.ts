@@ -50,7 +50,7 @@ function settingUserLine(state: GameState, lang: UiLanguage): string {
 }
 
 // Answer schemas — ONE for all languages: keys never get translated.
-const PARSE_SCHEMA = '{"summary": string (одно предложение), "actionType": "law"|"decree"|"statement"|"war"|"other", "warTarget": string|null (имя соседа, только для war), "effects": {economy,poverty,unemployment,inflation,freedom,corruption,stability,powerConcentration,education,technology,warMood: number}, "mood": {elites,military,workers,youth: number}, "treasuryDelta": number, "absurdity": 0..100, "ideologyTags": [0–3 тегов]}';
+const PARSE_SCHEMA = '{"summary": string (одно предложение), "actionType": "law"|"decree"|"statement"|"war"|"other", "warTarget": string|null (имя соседа, только для war), "effects": {economy,poverty,unemployment,inflation,freedom,corruption,stability,powerConcentration,education,technology,warMood: number}, "mood": {elites,military,workers,youth: number}, "treasuryDelta": number, "treasuryNote": string|null (≤80 символов, за что именно изменилась казна), "absurdity": 0..100, "ideologyTags": [0–3 тегов], "impeachmentAmnesty": boolean (true только для явного и дорогого жеста примирения замороженного слоя)}';
 const NARRATE_SCHEMA = '{"news": string, "baseEventFlavor": null | {"title": string, "description": string}, "dynamicEvent": null | {"title": string, "description": string (1–3 предложения), "effects": {<11 статов>: number}, "mood": {elites,military,workers,youth: number}, "treasuryDelta": number, "newArc": string|null (slug новой кастомной арки), "parentArcId": string|null, "resolvesArc": boolean, "charactersReferenced": [имена из реестра], "newCharacter": null | {"name": string, "role": string}}}';
 const EPILOGUE_SCHEMA = '{"epilogue": string}.';
 const IDEOLOGY_TAGS_LINE = 'Идеологические теги: militarism, pacifism, welfare, austerity, authoritarianism, liberalism, technocracy, traditionalism, nationalism, globalism, ecology, populism.';
@@ -67,6 +67,8 @@ export function buildParseActionPrompt(
     p.tone[state.mode],
     p.parseRules,
     p.treasuryRule,
+    p.treasuryNoteRule,
+    p.amnestyRule,
     p.answerSchemaLabel + ':',
     PARSE_SCHEMA,
     IDEOLOGY_TAGS_LINE,

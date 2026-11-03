@@ -94,6 +94,16 @@ export const CONFIG = {
 
   absurdity: { min: 0, max: 100, printThreshold: 50 },
 
+  // «Великое примирение»: дорогой жест примирения снимает заморозку импичмента.
+  // Срабатывает, когда парсер LLM вернул impeachmentAmnesty: true (см. llm/prompts.ts).
+  impeachmentAmnesty: {
+    floor: 12, // настроение размороженного слоя после жеста
+    treasuryCost: 30, // млрд
+    stabilityCost: 10,
+    cooldownWeeks: 36, // между применениями
+    maxPerRun: 2,
+  },
+
   // 7.6. Соседи
   neighbors: [
     { name: 'Северная Империя', strength: 80, relations: 0 },

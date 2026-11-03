@@ -6,7 +6,7 @@ import {
   advanceArcs, checkArcTriggers, executeAction, HARD_TRIGGERS,
 } from '../engine/triggers.js';
 import { validateAction } from '../engine/validator.js';
-import { createInitialState, makeArc } from '../engine/state.js';
+import { createInitialState, makeArc, type GameState } from '../engine/state.js';
 import { CONFIG } from '../engine/config.js';
 
 describe('триггеры арок', () => {
@@ -151,4 +151,51 @@ describe('триггеры арок', () => {
     expect(s.arcs).toHaveLength(1);
   });
 
+  test('проблема 3: флаг примирения размораживает слои по цене из конфига', () => {
+    const s = makeState('realism', (x) => {
+      x.mood.elites = 0; x.impeachmentFrozen.elites = true;
+      x.mood.workers = 3; x.impeachmentFrozen.workers = true;
+    });
+    const before = s.treasury;
+    const outcome = executeAction(s, validateAction(
+      { summary: 'амнистия', effects: {}, mood: {}, treasuryDelta: 0, absurdity: 5, impeachmentAmnesty: true },
+      'realism',
+    ));
+    expect(outcome.kind).toBe('effects');
+    if (outcome.kind !== 'effects') return;
+    expect(outcome.amnestyApplied).toBe(true);
+    expect(s.impeachmentFrozen.elites).toBe(false);
+    expect(s.impeachmentFrozen.workers).toBe(false);
+    expect(s.mood.elites).toBe(CONFIG.impeachmentAmnesty.floor);
+    expect(s.mood.workers).toBe(CONFIG.impeachmentAmnesty.floor);
+    expect(s.treasury).toBeCloseTo(before - CONFIG.impeachmentAmnesty.treasuryCost);
+    expect(s.stats.stability).toBe(65 - CONFIG.impeachmentAmnesty.stabilityCost);
+    expect(s.amnestyCount).toBe(1);
+  });
+
+  test('проблема 3: без заморозки, по кулдауну и сверх лимита — примирение не срабатывает', () => {
+    const amnestyOn = (s: GameState): boolean => {
+      const outcome = executeAction(s, validateAction(
+        { summary: 'x', impeachmentAmnesty: true }, 'realism',
+      ));
+      return outcome.kind === 'effects' && outcome.amnestyApplied;
+    };
+    // нет замороженных слоёв
+    expect(amnestyOn(makeState())).toBe(false);
+
+    // кулдаун: повторно на той же неделе — отказ
+    const s2 = makeState('realism', (x) => { x.mood.elites = 0; x.impeachmentFrozen.elites = true; });
+    expect(amnestyOn(s2)).toBe(true);
+    s2.mood.elites = 0; s2.impeachmentFrozen.elites = true;
+    expect(amnestyOn(s2)).toBe(false);
+
+    // лимит за ран
+    const s3 = makeState('realism', (x) => {
+      x.mood.elites = 0; x.impeachmentFrozen.elites = true;
+      x.amnestyCount = CONFIG.impeachmentAmnesty.maxPerRun;
+      x.week = 200; // кулдаун уже не спасает
+    });
+    expect(amnestyOn(s3)).toBe(false);
+    expect(s3.impeachmentFrozen.elites).toBe(true);
+  });
 });

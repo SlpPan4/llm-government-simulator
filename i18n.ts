@@ -66,6 +66,8 @@ export interface TurnStrings {
   arcResolved: (arcId: string, title: string) => string;
   newspaperHeader: string;
   noHappenings: (from: number, to: number) => string;
+  amnestyApplied: (floor: number, treasuryCost: number, stabilityCost: number) => string;
+  consequencesLine: (treasury: string | null, rest: string) => string;
 }
 
 export interface FinaleStrings {
@@ -201,6 +203,10 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       arcResolved: (arcId, title) => `📖 Сюжет: арка «${arcId}» завершена — ${title}`,
       newspaperHeader: '─── Газета ───',
       noHappenings: (from, to) => `Недели ${from}–${to} прошли без происшествий.`,
+      amnestyApplied: (floor, cost, stab) =>
+        `🕊 Великое примирение: замороженные слои разморожены, настроение поднято до ${floor}. Цена: казна −${cost} млрд, стабильность −${stab}.`,
+      consequencesLine: (treasury, rest) =>
+        `Последствия: ${[treasury ? `казна ${treasury} млрд` : null, rest].filter(Boolean).join(' | ')}`,
     },
     finale: {
       header: '\n═══ КОНЕЦ ПРАВЛЕНИЯ ═══',
@@ -311,6 +317,10 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       arcResolved: (arcId, title) => `📖 Сюжет: арку «${arcId}» завершено — ${title}`,
       newspaperHeader: '─── Газета ───',
       noHappenings: (from, to) => `Тижні ${from}–${to} минули без пригод.`,
+      amnestyApplied: (floor, cost, stab) =>
+        `🕊 Велике примирення: заморожені шари розморожено, настрій піднято до ${floor}. Ціна: скарбниця −${cost} млрд, стабільність −${stab}.`,
+      consequencesLine: (treasury, rest) =>
+        `Наслідки: ${[treasury ? `скарбниця ${treasury} млрд` : null, rest].filter(Boolean).join(' | ')}`,
     },
     finale: {
       header: '\n═══ КІНЕЦЬ ПРАВЛІННЯ ═══',
@@ -421,6 +431,10 @@ export const UI_STRINGS: Record<UiLanguage, UiStrings> = {
       arcResolved: (arcId, title) => `📖 Story: arc "${arcId}" resolved — ${title}`,
       newspaperHeader: '─── Newspaper ───',
       noHappenings: (from, to) => `Weeks ${from}–${to} passed without incidents.`,
+      amnestyApplied: (floor, cost, stab) =>
+        `🕊 Grand reconciliation: frozen layers are thawed, mood raised to ${floor}. Price: treasury −${cost} bln, stability −${stab}.`,
+      consequencesLine: (treasury, rest) =>
+        `Consequences: ${[treasury ? `treasury ${treasury} bln` : null, rest].filter(Boolean).join(' | ')}`,
     },
     finale: {
       header: '\n═══ END OF RULE ═══',
@@ -465,6 +479,8 @@ export interface PromptStrings {
   neighborsLabel: string;
   neighborShort: (strength: number, relations: number) => string;
   actionLabel: string;
+  amnestyRule: string;
+  treasuryNoteRule: string;
   narrateRole: string;
   narrateRules: string;
   newsFormat: string;
@@ -520,6 +536,8 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     neighborsLabel: 'Соседи',
     neighborShort: (strength, relations) => `(сила ${strength}, отношения ${relations})`,
     actionLabel: 'Действие президента',
+    amnestyRule: 'ПРАВИЛО ПРИМИРЕНИЯ: слой в импичменте (настроение 0) заморожен и не реагирует на обычные действия. Вернуть impeachmentAmnesty: true можно, только если действие — явный и дорогой жест примирения этому слою: амнистия, пакт, раздача активов. Мелкие подачки и рутинные реформы — всегда false.',
+    treasuryNoteRule: 'Если treasuryDelta не равен 0, добавь treasuryNote: короткую фразу (до 80 символов), за что именно изменилась казна: «субсидии армии и IT», «налог на недвижимость». Число не дублируй — оно уже в treasuryDelta.',
     narrateRole: 'Ты — главный редактор независимой газеты вымышленной страны.',
     narrateRules: 'Отражай только переданные факты и логические следствия из хроники. Не давай советов президенту.',
     newsFormat: 'Структура news: заголовок + 2–3 заметки + раздел «Голоса города» — 3 реплики жителей от первого лица. Всего до 250 слов.',
@@ -578,6 +596,8 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     neighborsLabel: 'Сусіди',
     neighborShort: (strength, relations) => `(сила ${strength}, відносини ${relations})`,
     actionLabel: 'Дія президента',
+    amnestyRule: 'ПРАВИЛО ПРИМИРЕННЯ: шар в імпічменті (настрій 0) заморожений і не реагує на звичайні дії. Повернути impeachmentAmnesty: true можна, лише якщо дія — явний і дорогий жест примирення цьому шару: амністія, пакт, роздача активів. Дрібні подачки та рутинні реформи — завжди false.',
+    treasuryNoteRule: 'Якщо treasuryDelta не дорівнює 0, додай treasuryNote: коротку фразу (до 80 символів), за що саме змінилася скарбниця: «субсидії армії та IT», «податок на нерухомість». Число не дублюй — воно вже в treasuryDelta.',
     narrateRole: 'Ти — головний редактор незалежної газети вигаданої країни.',
     narrateRules: 'Відображай лише передані факти й логічні наслідки з хроніки. Не давай порад президенту.',
     newsFormat: 'Структура news: заголовок + 2–3 нотатки + розділ «Голоси міста» — 3 репліки мешканців від першої особи. Всього до 250 слів.',
@@ -636,6 +656,8 @@ export const PROMPT_STRINGS: Record<UiLanguage, PromptStrings> = {
     neighborsLabel: 'Neighbors',
     neighborShort: (strength, relations) => `(strength ${strength}, relations ${relations})`,
     actionLabel: 'President\'s action',
+    amnestyRule: 'RECONCILIATION RULE: a layer in impeachment (mood 0) is frozen and does not react to ordinary actions. Return impeachmentAmnesty: true only if the action is an explicit, costly gesture of reconciliation toward that layer: amnesty, a pact, handing out assets. Small handouts and routine reforms are always false.',
+    treasuryNoteRule: 'If treasuryDelta is not 0, add treasuryNote: a short phrase (up to 80 characters) stating what the treasury change paid for: "subsidies for the army and IT", "property tax". Do not repeat the number — it is already in treasuryDelta.',
     narrateRole: 'You are the editor-in-chief of an independent newspaper in a fictional country.',
     narrateRules: 'Report only the given facts and logical consequences from the chronicle. Do not give the president any advice.',
     newsFormat: 'Structure of news: headline + 2–3 items + a "Voices of the city" section — 3 first-person quotes from residents. Up to 250 words total.',
