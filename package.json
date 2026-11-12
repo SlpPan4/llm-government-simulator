@@ -2,10 +2,7 @@
   "name": "the-new-rule",
   "version": "1.0.0",
   "description": "Text based game about ruling a country, with actions and reactions of the people powered by AI, to create unique experience every time.",
-  "keywords": [
-    "Country",
-    "rule"
-  ],
+  "keywords": ["llm", "ai-game", "text-based-game", "government-simulator", "political-simulation", "simulation", "deepseek", "typescript", "cli-game", "terminal-game"],
   "homepage": "https://github.com/SlpPan4/the-new-rule#readme",
   "bugs": {
     "url": "https://github.com/SlpPan4/the-new-rule/issues"

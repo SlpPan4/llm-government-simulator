@@ -4,3 +4,4 @@ dist/
 coverage/
 *.log
 saves/
+manual-llm/
