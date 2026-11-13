@@ -297,6 +297,63 @@ export const CONFIG = {
       when: { any: [{ derived: 'homelessness', above: 15 }] },
       effects: { mood: { youth: -5 }, stats: { stability: -3 } },
     },
+    {
+      id: 'harvest_failure',
+      when: { all: [{ stat: 'inflation', above: 15 }, { stat: 'economy', below: 50 }] },
+      effects: { stats: { poverty: 5, economy: -3 }, mood: { workers: -5 } },
+    },
+    {
+      id: 'foreign_investment',
+      when: { any: [{ stat: 'economy', above: 55 }] },
+      effects: { stats: { economy: 5, technology: 3 }, treasury: 10 },
+    },
+    {
+      id: 'currency_crisis',
+      when: { any: [{ stat: 'inflation', above: 30 }] },
+      effects: { stats: { economy: -5, inflation: 5, stability: -3 }, treasury: -10 },
+    },
+    {
+      id: 'viral_meme',
+      effects: { mood: { youth: 6 }, moodAll: 3 },
+    },
+    {
+      id: 'epidemic',
+      when: { any: [{ stat: 'poverty', above: 50 }] },
+      effects: { stats: { economy: -4, poverty: 3 }, moodAll: -4, treasury: -15 },
+    },
+    {
+      id: 'factory_closure',
+      when: { all: [{ stat: 'economy', below: 45 }, { stat: 'unemployment', above: 15 }] },
+      effects: { mood: { workers: -8 }, stats: { unemployment: 5, stability: -3 } },
+    },
+    {
+      id: 'railway_accident',
+      effects: { treasury: -15, stats: { stability: -4 }, moodAll: -3 },
+    },
+    {
+      id: 'startup_boom',
+      when: { all: [{ stat: 'technology', above: 55 }, { stat: 'freedom', above: 50 }] },
+      effects: { stats: { technology: 4, economy: 4 }, mood: { youth: 5 } },
+    },
+    {
+      id: 'spy_scandal',
+      effects: { stats: { stability: -5, corruption: 4 }, mood: { military: 3 } },
+    },
+    {
+      id: 'pensioner_march',
+      when: { any: [{ moodBandAtMost: { key: 'workers', band: 'disliking' } }] },
+      effects: { mood: { workers: -5 }, stats: { stability: -4 } },
+    },
+    {
+      id: 'expo_forum',
+      when: { any: [{ stat: 'stability', above: 55 }] },
+      effects: { stats: { economy: 4, freedom: 3 }, treasury: -10, moodAll: 4 },
+    },
+    {
+      id: 'oligarch_lobby',
+      when: { any: [{ stat: 'corruption', above: 40 }] },
+      effects: { stats: { corruption: 5 }, treasury: 10, mood: { workers: -5 } },
+    },
   ],
 
   // 7.9. Концовки и счёт
