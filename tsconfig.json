@@ -10,5 +10,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["engine/**/*.ts", "llm/**/*.ts", "game.ts", "tests/**/*.ts"]
+  "include": ["engine/**/*.ts", "llm/**/*.ts", "game.ts", "demo/**/*.ts", "tests/**/*.ts"]
 }

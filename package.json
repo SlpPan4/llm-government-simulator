@@ -17,6 +17,7 @@
   "main": "game.ts",
   "scripts": {
     "dev": "tsx game.ts",
+    "demo": "tsx demo/demo.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

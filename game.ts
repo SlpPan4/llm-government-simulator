@@ -6,6 +6,8 @@ import 'dotenv/config';
 import { createInterface } from 'node:readline';
 import { stdin as input, stdout as output } from 'node:process';
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { CONFIG, MOOD_KEYS, STAT_KEYS, clamp, type GameMode } from './engine/config.js';
 import {
@@ -33,7 +35,7 @@ import {
 const MONTHS_TOTAL = CONFIG.run.termWeeks / 4;
 
 // Баннер печатается до выбора языка, поэтому — на языке по умолчанию (ru).
-function printBanner(t: UiStrings): void {
+export function printBanner(t: UiStrings): void {
   const W = 34;
   tee(`╔${'═'.repeat(W)}╗`);
   tee(`║   ${t.bannerTitle.padEnd(30)}║`);
@@ -41,7 +43,7 @@ function printBanner(t: UiStrings): void {
   tee(`╚${'═'.repeat(W)}╝`);
 }
 
-function printStatus(state: GameState, lang: UiLanguage): void {
+export function printStatus(state: GameState, lang: UiLanguage): void {
   const t = UI_STRINGS[lang];
   const week = Math.min(state.week, CONFIG.run.termWeeks);
   const month = Math.min(MONTHS_TOTAL, Math.floor((state.week - 1) / 4) + 1);
@@ -124,11 +126,15 @@ function resolveNeighborId(state: GameState, raw: string | null): string | null 
 }
 
 // Один ход: действие или пропуск → тик → арки → новости.
-async function playTurn(  state: GameState,
+// rng — как в tickWeeks: по умолчанию Math.random (обычная игра не меняется),
+// демо-режим передаёт сюда seeded RNG для воспроизводимых прогонов.
+export async function playTurn(
+  state: GameState,
   llm: LLM,
   actionText: string | null,
   weeks: number,
   lang: UiLanguage,
+  rng: () => number = Math.random,
 ): Promise<void> {
   const t = UI_STRINGS[lang];
   const startWeek = state.week;
@@ -179,7 +185,7 @@ async function playTurn(  state: GameState,
     }
   }
 
-  const tickResult = tickWeeks(state, weeks);
+  const tickResult = tickWeeks(state, weeks, rng);
   if (tickResult.startedArc) {
     const title = arcTitle(lang, tickResult.startedArc);
     tee(`\n${t.turn.crisisStarted(title, state.week)}`);
@@ -237,7 +243,7 @@ async function playTurn(  state: GameState,
   }
 }
 
-async function finale(state: GameState, llm: LLM, endingLabel: string | null, lang: UiLanguage): Promise<void> {
+export async function finale(state: GameState, llm: LLM, endingLabel: string | null, lang: UiLanguage): Promise<void> {
   const t = UI_STRINGS[lang];
   const ending = state.gameOver
     ? endingFromGameOver(state)
@@ -472,7 +478,14 @@ async function main(): Promise<void> {
   rl.close();
 }
 
-main().catch((err) => {
-  console.error('Игра завершилась с ошибкой:', err);
-  process.exitCode = 1;
-});
+// main() запускаем только когда game.ts — точка входа: demo/run.ts импортирует
+// хелперы отсюда, и интерактивный цикл при импорте выполняться не должен.
+const invokedDirectly = process.argv[1] !== undefined
+  && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error('Игра завершилась с ошибкой:', err);
+    process.exitCode = 1;
+  });
+}
